@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -40,11 +40,31 @@ class MemgraphConfig(BaseModel):
             raise ValueError("Please provide 'url', 'username' and 'password'.")
         return values
 
+class NeptuneAnalyticsConfig(BaseModel):
+    graph_identifier: Optional[str] = Field(
+        None, description="Neptune graph identifier"
+    )
+
+    @model_validator(mode="before")
+    def check_host_port_or_path(cls, values):
+        graph_identifier = values.get("graph_identifier")
+        if not graph_identifier:
+            raise ValueError("Please provide 'graph_identifier'.")
+        if not graph_identifier.startswith("g-"):
+            raise ValueError("Provide a valid 'graph_identifier'.")
+        return values
 
 class GraphStoreConfig(BaseModel):
-    provider: str = Field(description="Provider of the data store (e.g., 'neo4j')", default="neo4j")
-    config: Neo4jConfig = Field(description="Configuration for the specific data store", default=None)
-    llm: Optional[LlmConfig] = Field(description="LLM configuration for querying the graph store", default=None)
+    provider: str = Field(
+        description="Provider of the data store (e.g., 'neo4j', 'memgraph', 'neptune')",
+        default="neo4j",
+    )
+    config: Union[Neo4jConfig, MemgraphConfig, NeptuneAnalyticsConfig] = Field(
+        description="Configuration for the specific data store", default=None
+    )
+    llm: Optional[LlmConfig] = Field(
+        description="LLM configuration for querying the graph store", default=None
+    )
     custom_prompt: Optional[str] = Field(
         description="Custom prompt to fetch entities from the given text", default=None
     )
@@ -56,5 +76,7 @@ class GraphStoreConfig(BaseModel):
             return Neo4jConfig(**v.model_dump())
         elif provider == "memgraph":
             return MemgraphConfig(**v.model_dump())
+        elif provider == "neptune":
+            return NeptuneAnalyticsConfig(**v.model_dump())
         else:
             raise ValueError(f"Unsupported graph store provider: {provider}")

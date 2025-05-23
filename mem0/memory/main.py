@@ -133,6 +133,8 @@ class Memory(MemoryBase):
         if self.config.graph_store.config:
             if self.config.graph_store.provider == "memgraph":
                 from mem0.memory.memgraph_memory import MemoryGraph
+            elif self.config.graph_store.provider == "neptune":
+                from mem0.memory.neptune_memory import MemoryGraph
             else:
                 from mem0.memory.graph_memory import MemoryGraph
 
@@ -560,7 +562,7 @@ class Memory(MemoryBase):
     def _get_all_from_vector_store(self, filters, limit):
         memories_result = self.vector_store.list(filters=filters, limit=limit)
         actual_memories = (
-            memories_result[0] if isinstance(memories_result, tuple) and len(memories_result) > 0 else memories_result
+            memories_result[0] if (isinstance(memories_result, tuple) or isinstance(memories_result, list)) and len(memories_result) > 0 else memories_result
         )
 
         promoted_payload_keys = [
