@@ -181,6 +181,7 @@ class OpenSearchDB(VectorStoreBase):
         opensearch_id = hits[0]["_id"]
 
         # Delete using the actual document ID
+        logger.debug(f"delete index={self.collection_name}, id={opensearch_id}")
         self.client.delete(index=self.collection_name, id=opensearch_id)
 
     def update(self, vector_id: str, vector: Optional[List[float]] = None, payload: Optional[Dict] = None) -> None:
