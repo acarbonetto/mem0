@@ -223,7 +223,7 @@ class MemoryGraph:
                 "dest_name": destination,
                 "user_id": user_id,
             }
-            logger.info(f"_delete_entities\n  query={cypher}\n  params={params}")
+            logger.debug(f"_delete_entities\n  query={cypher}")
             result = self.graph.query(cypher, params=params)
             results.append(result)
         return results
@@ -370,7 +370,7 @@ class MemoryGraph:
                     "dest_embedding": dest_embedding,
                     "user_id": user_id,
                 }
-            logger.info(f"_add_entities:\n  destination_node_search_result={destination_node_search_result}\n  source_node_search_result={source_node_search_result}\n  query={cypher}\n  params={params}")
+            logger.debug(f"_add_entities:\n  destination_node_search_result={destination_node_search_result}\n  source_node_search_result={source_node_search_result}\n  query={cypher}")
             result = self.graph.query(cypher, params=params)
             results.append(result)
         return results
@@ -443,7 +443,7 @@ class MemoryGraph:
             "threshold": threshold,
         }
 
-        logger.info(f"_search_source_node\n  query={cypher}\n  params={params}")
+        logger.debug(f"_search_source_node\n  query={cypher}")
         result = self.graph.query(cypher, params=params)
         return result
 
@@ -476,7 +476,7 @@ class MemoryGraph:
             "threshold": threshold,
         }
 
-        logger.info(f"_search_destination_node\n  query={cypher}\n  params={params}")
+        logger.debug(f"_search_destination_node\n  query={cypher}")
         result = self.graph.query(cypher, params=params)
         return result
 
@@ -487,7 +487,7 @@ class MemoryGraph:
         """
         params = {"user_id": filters["user_id"]}
 
-        logger.info(f"delete_all query={cypher}")
+        logger.debug(f"delete_all query={cypher}")
         self.graph.query(cypher, params=params)
 
     def get_all(self, filters, limit=100):
@@ -509,9 +509,8 @@ class MemoryGraph:
         RETURN n.name AS source, type(r) AS relationship, m.name AS target
         LIMIT $limit
         """
-        results = self.graph.query(
-            query, params={"user_id": filters["user_id"], "limit": limit}
-        )
+        params = {"user_id": filters["user_id"], "limit": limit}
+        results = self.graph.query(query, params=params)
 
         final_results = []
         for result in results:
@@ -523,7 +522,7 @@ class MemoryGraph:
                 }
             )
 
-        logger.info(f"Retrieved {len(final_results)} relationships")
+        logger.debug(f"Retrieved {len(final_results)} relationships")
 
         return final_results
 
@@ -604,7 +603,7 @@ class MemoryGraph:
                 "limit": limit,
             }
 
-            logger.info(f"_search_graph_db\n  query={cypher_query}\n  params={params}")
+            logger.debug(f"_search_graph_db\n  query={cypher_query}")
             ans = self.graph.query(cypher_query, params=params)
             result_relations.extend(ans)
 
