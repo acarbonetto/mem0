@@ -37,6 +37,7 @@ class BaseEmbedderConfig(ABC):
         aws_access_key_id: Optional[str] = None,
         aws_secret_access_key: Optional[str] = None,
         aws_region: Optional[str] = "us-west-2",
+        aws_neptune_graph_id: Optional[str] = None,
     ):
         """
         Initializes a configuration class instance for the Embeddings.
@@ -97,7 +98,10 @@ class BaseEmbedderConfig(ABC):
         # LM Studio specific
         self.lmstudio_base_url = lmstudio_base_url
 
-        # AWS Bedrock specific
+        # AWS Neptune & Bedrock specific
         self.aws_access_key_id = aws_access_key_id
         self.aws_secret_access_key = aws_secret_access_key
         self.aws_region = aws_region
+
+        # AWS Neptune specific
+        self.aws_neptune_graph_id = aws_neptune_graph_id
