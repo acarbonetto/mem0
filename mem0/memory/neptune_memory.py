@@ -423,7 +423,8 @@ class MemoryGraph:
             WITH source_candidate, source_candidate.embedding AS embedding, $source_embedding as v_embedding
             CALL neptune.algo.vectors.distanceByEmbedding(
                 embedding, 
-                v_embedding
+                source_candidate,
+                {metric:"CosineSimilarity"}
             ) YIELD distance
             
             WITH source_candidate,
@@ -456,7 +457,8 @@ class MemoryGraph:
             WITH destination_candidate, destination_candidate.embedding AS embedding, $destination_embedding as v_embedding
             CALL neptune.algo.vectors.distanceByEmbedding(
                 embedding, 
-                v_embedding
+                destination_candidate,
+                {metric:"CosineSimilarity"}
             ) YIELD distance
 
             WITH destination_candidate,
@@ -578,8 +580,11 @@ class MemoryGraph:
             MATCH (n)
             WHERE n.embedding IS NOT NULL AND n.user_id = $user_id
             WITH n, n.embedding AS embedding, $n_embedding as n_embedding
-            CALL neptune.algo.vectors.distanceByEmbedding(embedding, n_embedding)
-            YIELD distance
+            CALL neptune.algo.vectors.distanceByEmbedding(
+                n_embedding,
+                n,
+                {metric:"CosineSimilarity"}
+            ) YIELD distance
             WITH n, round(2 * distance - 1) AS similarity
             WHERE similarity >= $threshold
             CALL {
@@ -608,3 +613,12 @@ class MemoryGraph:
             result_relations.extend(ans)
 
         return result_relations
+
+    # TODO: reset is not defined in base.py
+    def reset(self):
+        """Reset the graph by clearing all nodes and relationships."""
+        logger.warning(f"Clearing graph...")
+        cypher_query = """
+        MATCH (n) DETACH DELETE n
+        """
+        self.graph.query(cypher_query)

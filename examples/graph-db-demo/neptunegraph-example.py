@@ -11,14 +11,26 @@ logging.basicConfig(
     stream=sys.stdout  # Explicitly set output to stdout
 )
 
+print(f"profile = {os.environ.get("AWS_PROFILE")}")
 graph_identifier = os.environ.get("GRAPH_ID")
-opensearch_username = os.environ.get("OPENSEARCH_USERNAME")
-opensearch_password = os.environ.get("OPENSEARCH_PASSWORD")
+print(f"graph_identifier = {graph_identifier}")
+opensearch_username = os.environ.get("OS_USERNAME")
+opensearch_password = os.environ.get("OS_PASSWORD")
+
 config = {
+    "embedder": {
+        "provider": "openai",
+        "config": {
+            "model": "text-embedding-3-large",
+            "embedding_dims": 1536
+        },
+    },
     "graph_store": {
         "provider": "neptune",
         "config": {
             "graph_identifier": graph_identifier,
+            # "endpoint_url": endpoint_url,
+            # "region": region,
         },
     },
     "vector_store": {
@@ -33,17 +45,6 @@ config = {
             "verify_certs": False,
         },
     },
-    # "embedder": {
-    # configure Neptune Analytics?
-    # },
-    # "llm": {
-    #     "provider": "aws_bedrock",
-    #     "config": {
-    #         "model": "anthropic.claude-3-5-haiku-20241022-v1:0",
-    #         "temperature": 0.2,
-    #         "max_tokens": 2000,
-    #     },
-    # },
 }
 
 logger.debug(
