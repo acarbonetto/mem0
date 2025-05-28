@@ -1,4 +1,4 @@
-import logging, sys
+import logging, sys, os
 from mem0 import Memory
 
 logging.getLogger('mem0.memory.neptune_memory').setLevel(logging.DEBUG)
@@ -11,11 +11,14 @@ logging.basicConfig(
     stream=sys.stdout  # Explicitly set output to stdout
 )
 
+graph_identifier = os.environ.get("GRAPH_ID")
+opensearch_username = os.environ.get("OPENSEARCH_USERNAME")
+opensearch_password = os.environ.get("OPENSEARCH_PASSWORD")
 config = {
     "graph_store": {
         "provider": "neptune",
         "config": {
-            "graph_identifier": "g-7x7y4ao798",
+            "graph_identifier": graph_identifier,
         },
     },
     "vector_store": {
@@ -24,8 +27,8 @@ config = {
             "collection_name": "vector_store",
             "host": "localhost",
             "port": 9200,
-            "user": "admin",
-            "password": "acarbonettoA1!",
+            "user": opensearch_username,
+            "password": opensearch_password,
             "use_ssl": False,
             "verify_certs": False,
         },
