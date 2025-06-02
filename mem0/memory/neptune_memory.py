@@ -96,6 +96,7 @@ class MemoryGraph:
         )
 
         entity_type_map = {}
+        print(f"search_results={search_results}")
 
         try:
             for tool_call in search_results["tool_calls"]:
@@ -112,7 +113,7 @@ class MemoryGraph:
             k.lower().replace(" ", "_"): v.lower().replace(" ", "_")
             for k, v in entity_type_map.items()
         }
-        logger.debug(
+        print(
             f"Entity type map: {entity_type_map}\n search_results={search_results}"
         )
         return entity_type_map
@@ -355,8 +356,8 @@ class MemoryGraph:
                     ON CREATE SET m.created = timestamp(),
                                   m.mentions = 1
                     ON MATCH SET m.mentions = coalesce(m.mentions, 0) + 1
-                    WITH n, m, $source_embedding as source_embedding
-                    CALL neptune.algo.vectors.upsert(m, source_embedding)
+                    WITH n, m, $dest_embedding as dest_embedding
+                    CALL neptune.algo.vectors.upsert(m, dest_embedding)
                     WITH n, m
                     MERGE (n)-[rel:{relationship}]->(m)
                     ON CREATE SET rel.created = timestamp(), rel.mentions = 1
@@ -405,6 +406,7 @@ class MemoryGraph:
 
         tokenized_query = query.split(" ")
         reranked_results = bm25.get_top_n(tokenized_query, search_outputs_sequence, n=5)
+        print(f"reranked_results={reranked_results}")
 
         search_results = []
         for item in reranked_results:
@@ -550,14 +552,20 @@ class MemoryGraph:
         if not search_output:
             return []
 
+        print(f"search_output={search_output}")
+
         search_outputs_sequence = [
             [item["source"], item["relationship"], item["destination"]]
             for item in search_output
         ]
         bm25 = BM25Okapi(search_outputs_sequence)
 
+        print(f"search_outputs_sequence={search_outputs_sequence}")
+
         tokenized_query = query.split(" ")
         reranked_results = bm25.get_top_n(tokenized_query, search_outputs_sequence, n=5)
+
+        print(f"reranked_results={reranked_results}")
 
         search_results = []
         for item in reranked_results:
@@ -573,13 +581,15 @@ class MemoryGraph:
         """Search similar nodes among and their respective incoming and outgoing relations."""
         result_relations = []
 
+        print(f"searching node_list:{node_list}")
+
         for node in node_list:
             n_embedding = self.embedding_model.embed(node)
 
             cypher_query = """
             MATCH (n)
-            WHERE n.embedding IS NOT NULL AND n.user_id = $user_id
-            WITH n, n.embedding AS embedding, $n_embedding as n_embedding
+            WHERE n.user_id = $user_id
+            WITH n, $n_embedding as n_embedding
             CALL neptune.algo.vectors.distanceByEmbedding(
                 n_embedding,
                 n,
@@ -591,12 +601,11 @@ class MemoryGraph:
                 WITH n
                 MATCH (n)-[r]->(m) 
                 RETURN n.name AS source, id(n) AS source_id, type(r) AS relationship, id(r) AS relation_id, m.name AS destination, id(m) AS destination_id
-                UNION
+                UNION ALL
                 MATCH (m)-[r]->(n) 
                 RETURN m.name AS source, id(m) AS source_id, type(r) AS relationship, id(r) AS relation_id, n.name AS destination, id(n) AS destination_id
             }
-
-            WITH distinct source, source_id, relationship, relation_id, destination, destination_id, similarity //deduplicate
+            WITH distinct source, source_id, relationship, relation_id, destination, destination_id, similarity
             RETURN source, source_id, relationship, relation_id, destination, destination_id, similarity
             ORDER BY similarity DESC
             LIMIT $limit
