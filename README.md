@@ -152,6 +152,8 @@ Mem0 now supports Amazon Neptune Analytics as a graph store provider. This integ
 
 ### Usage
 
+The Neptune memory store uses AWS LangChain Python API to connect to Neptune instances.  For additional configuration see [AWS LangChain API documentation](https://python.langchain.com/api_reference/aws/graphs/langchain_aws.graphs.neptune_graph.NeptuneAnalyticsGraph.html).  
+
 ```python
 from mem0 import Memory
 
