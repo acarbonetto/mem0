@@ -75,6 +75,7 @@ class MemoryGraph:
         """
         entity_type_map = self._retrieve_nodes_from_data(data, filters)
         to_be_added = self._establish_nodes_relations_from_data(data, filters, entity_type_map)
+        self._search_graph_db_print_similarity(node_list=list(entity_type_map.keys()), filters=filters)
         search_output = self._search_graph_db(node_list=list(entity_type_map.keys()), filters=filters)
         to_be_deleted = self._get_delete_entities_from_search_output(search_output, data, filters)
 
@@ -264,6 +265,43 @@ class MemoryGraph:
                 "limit": limit,
             }
             ans = self.graph.query(cypher_query, params=params)
+            result_relations.extend(ans)
+
+        return result_relations
+
+    def _search_graph_db_print_similarity(self, node_list, filters, limit=100):
+        """Search similar nodes among and their respective incoming and outgoing relations."""
+        result_relations = []
+
+        logger.debug(f"_search_graph_db_print_similarity {node_list}")
+
+        for node in node_list:
+            n_embedding = self.embedding_model.embed(node)
+
+            cypher_query = f"""
+            MATCH (n {self.node_label})
+            WHERE n.embedding IS NOT NULL AND n.user_id = $user_id
+            WITH n, round(2 * vector.similarity.cosine(n.embedding, $n_embedding) - 1, 4) AS similarity // denormalize for backward compatibility
+            CALL (n) {{
+                MATCH (n)-[r]->(m) 
+                RETURN n.name AS source, elementId(n) AS source_id, type(r) AS relationship, elementId(r) AS relation_id, m.name AS destination, elementId(m) AS destination_id
+                UNION
+                MATCH (m)-[r]->(n) 
+                RETURN m.name AS source, elementId(m) AS source_id, type(r) AS relationship, elementId(r) AS relation_id, n.name AS destination, elementId(n) AS destination_id
+            }}
+            WITH distinct source, source_id, relationship, relation_id, destination, destination_id, similarity //deduplicate
+            RETURN source, source_id, relationship, relation_id, destination, destination_id, similarity
+            ORDER BY similarity DESC
+            LIMIT $limit
+            """
+            params = {
+                "n_embedding": n_embedding,
+                "threshold": self.threshold,
+                "user_id": filters["user_id"],
+                "limit": limit,
+            }
+            ans = self.graph.query(cypher_query, params=params)
+            logger.debug(f"_search_graph_db_print_similarity={ans}")
             result_relations.extend(ans)
 
         return result_relations
@@ -528,3 +566,12 @@ class MemoryGraph:
 
         result = self.graph.query(cypher, params=params)
         return result
+
+    # TODO: reset is not defined in base.py
+    def reset(self):
+        """Reset the graph by clearing all nodes and relationships."""
+        logger.warning(f"Clearing graph...")
+        cypher_query = """
+        MATCH (n) DETACH DELETE n
+        """
+        return self.graph.query(cypher_query)

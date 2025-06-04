@@ -40,7 +40,7 @@ class MemgraphConfig(BaseModel):
             raise ValueError("Please provide 'url', 'username' and 'password'.")
         return values
 
-class NeptuneAnalyticsConfig(BaseModel):
+class NeptuneConfig(BaseModel):
     graph_identifier: Optional[str] = Field(
         None, description="Neptune graph identifier"
     )
@@ -59,7 +59,7 @@ class GraphStoreConfig(BaseModel):
         description="Provider of the data store (e.g., 'neo4j', 'memgraph', 'neptune')",
         default="neo4j",
     )
-    config: Union[Neo4jConfig, MemgraphConfig, NeptuneAnalyticsConfig] = Field(
+    config: Union[Neo4jConfig, MemgraphConfig, NeptuneConfig] = Field(
         description="Configuration for the specific data store", default=None
     )
     llm: Optional[LlmConfig] = Field(
@@ -77,6 +77,6 @@ class GraphStoreConfig(BaseModel):
         elif provider == "memgraph":
             return MemgraphConfig(**v.model_dump())
         elif provider == "neptune":
-            return NeptuneAnalyticsConfig(**v.model_dump())
+            return NeptuneConfig(**v.model_dump())
         else:
             raise ValueError(f"Unsupported graph store provider: {provider}")

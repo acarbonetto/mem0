@@ -65,6 +65,7 @@ class MemoryGraph:
         to_be_added = self._establish_nodes_relations_from_data(
             data, filters, entity_type_map
         )
+        # self._search_graph_db_print_similarity(node_list=list(entity_type_map.keys()), filters=filters)
         search_output = self._search_graph_db(
             node_list=list(entity_type_map.keys()), filters=filters
         )
@@ -72,7 +73,9 @@ class MemoryGraph:
             search_output, data, filters
         )
 
-        deleted_entities = self._delete_entities(to_be_deleted, filters["user_id"])
+        deleted_entities = (
+            self._delete_entities(to_be_deleted, filters["user_id"])
+        )
         added_entities = self._add_entities(
             to_be_added, filters["user_id"], entity_type_map
         )
@@ -96,7 +99,6 @@ class MemoryGraph:
         )
 
         entity_type_map = {}
-        print(f"search_results={search_results}")
 
         try:
             for tool_call in search_results["tool_calls"]:
@@ -113,9 +115,6 @@ class MemoryGraph:
             k.lower().replace(" ", "_"): v.lower().replace(" ", "_")
             for k, v in entity_type_map.items()
         }
-        print(
-            f"Entity type map: {entity_type_map}\n search_results={search_results}"
-        )
         return entity_type_map
 
     def _establish_nodes_relations_from_data(self, data, filters, entity_type_map):
@@ -429,8 +428,7 @@ class MemoryGraph:
                 {metric:"CosineSimilarity"}
             ) YIELD distance
             
-            WITH source_candidate,
-            round(2 * distance - 1) AS source_similarity // denormalize for backward compatibility
+            WITH source_candidate, (round((2 * distance - 1) * 1000) / 1000) AS source_similarity
             WHERE source_similarity >= $threshold
 
             WITH source_candidate, source_similarity
@@ -448,6 +446,7 @@ class MemoryGraph:
 
         logger.debug(f"_search_source_node\n  query={cypher}")
         result = self.graph.query(cypher, params=params)
+        logger.debug(f"_search_source_node result\n  result={result}")
         return result
 
     def _search_destination_node(self, destination_embedding, user_id, threshold=0.9):
@@ -463,8 +462,7 @@ class MemoryGraph:
                 {metric:"CosineSimilarity"}
             ) YIELD distance
 
-            WITH destination_candidate,
-            round(2 * distance - 1) AS destination_similarity // denormalize for backward compatibility
+            WITH destination_candidate, (round((2 * distance - 1) * 1000) / 1000) AS destination_similarity
 
             WHERE destination_similarity >= $threshold
 
@@ -482,6 +480,7 @@ class MemoryGraph:
 
         logger.debug(f"_search_destination_node\n  query={cypher}")
         result = self.graph.query(cypher, params=params)
+        logger.debug(f"_search_destination_node result\n  result={result}")
         return result
 
     def delete_all(self, filters):
@@ -552,20 +551,14 @@ class MemoryGraph:
         if not search_output:
             return []
 
-        print(f"search_output={search_output}")
-
         search_outputs_sequence = [
             [item["source"], item["relationship"], item["destination"]]
             for item in search_output
         ]
         bm25 = BM25Okapi(search_outputs_sequence)
 
-        print(f"search_outputs_sequence={search_outputs_sequence}")
-
         tokenized_query = query.split(" ")
         reranked_results = bm25.get_top_n(tokenized_query, search_outputs_sequence, n=5)
-
-        print(f"reranked_results={reranked_results}")
 
         search_results = []
         for item in reranked_results:
@@ -581,8 +574,6 @@ class MemoryGraph:
         """Search similar nodes among and their respective incoming and outgoing relations."""
         result_relations = []
 
-        print(f"searching node_list:{node_list}")
-
         for node in node_list:
             n_embedding = self.embedding_model.embed(node)
 
@@ -595,13 +586,14 @@ class MemoryGraph:
                 n,
                 {metric:"CosineSimilarity"}
             ) YIELD distance
-            WITH n, round(2 * distance - 1) AS similarity
+            WITH n, distance as similarity
             WHERE similarity >= $threshold
             CALL {
                 WITH n
                 MATCH (n)-[r]->(m) 
                 RETURN n.name AS source, id(n) AS source_id, type(r) AS relationship, id(r) AS relation_id, m.name AS destination, id(m) AS destination_id
                 UNION ALL
+                WITH n
                 MATCH (m)-[r]->(n) 
                 RETURN m.name AS source, id(m) AS source_id, type(r) AS relationship, id(r) AS relation_id, n.name AS destination, id(n) AS destination_id
             }
@@ -619,9 +611,58 @@ class MemoryGraph:
 
             logger.debug(f"_search_graph_db\n  query={cypher_query}")
             ans = self.graph.query(cypher_query, params=params)
+            logger.debug(f"_search_graph_db result\n  ans={ans}")
             result_relations.extend(ans)
 
         return result_relations
+
+    def _search_graph_db_print_similarity(self, node_list, filters, limit=100):
+        """Search similar nodes among and their respective incoming and outgoing relations."""
+        result_relations = []
+
+        logger.debug(f"_search_graph_db_print_similarity {node_list}")
+
+        for node in node_list:
+            n_embedding = self.embedding_model.embed(node)
+
+            cypher_query = """
+            MATCH (n)
+            WHERE n.user_id = $user_id
+            WITH n, $n_embedding as n_embedding
+            CALL neptune.algo.vectors.distanceByEmbedding(
+                n_embedding,
+                n,
+                {metric:"CosineSimilarity"}
+            ) YIELD distance
+            WITH n, distance, (round(2 * distance - 1)) AS rounded_distance, (round((2 * distance - 1) * 1000) / 1000) AS similarity
+            CALL {
+                WITH n
+                MATCH (n)-[r]->(m) 
+                RETURN n.name AS node, id(n) AS node_id
+                UNION ALL
+                WITH n
+                MATCH (o)-[r]->(n) 
+                RETURN n.name AS node, id(n) AS node_id
+            }
+            WITH distinct node, node_id, distance, rounded_distance, similarity
+            RETURN node, node_id, distance, rounded_distance, similarity
+            ORDER BY distance DESC
+            LIMIT $limit
+            """
+            params = {
+                "n_embedding": n_embedding,
+                "threshold": self.threshold,
+                "user_id": filters["user_id"],
+                "limit": limit,
+            }
+
+            ans = self.graph.query(cypher_query, params=params)
+            for other_node in ans:
+                distance = other_node["distance"]
+                rounded_distance = other_node["rounded_distance"]
+                similarity = other_node["similarity"]
+                other_node_name = other_node["node"]
+                logger.debug(f"_search_graph_db_print_similarity={node} x {other_node_name}: {distance}, {rounded_distance}, {similarity}")
 
     # TODO: reset is not defined in base.py
     def reset(self):
