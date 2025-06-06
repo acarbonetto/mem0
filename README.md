@@ -136,42 +136,6 @@ if __name__ == "__main__":
     main()
 ```
 
-## Neptune Analytics Integration
-
-Mem0 now supports Amazon Neptune Analytics as a graph store provider. This integration allows you to use Neptune Analytics for storing and querying graph-based memories.
-
-### Setup
-
-1. Create a Neptune Analytics instance in your AWS account following the [AWS documentation](https://docs.aws.amazon.com/neptune-analytics/latest/userguide/get-started.html).
-
-2. Configure your environment variables:
-   ```bash
-   export AWS_ACCESS_KEY_ID=your-access-key
-   export AWS_SECRET_ACCESS_KEY=your-secret-key
-   ```
-
-### Usage
-
-The Neptune memory store uses AWS LangChain Python API to connect to Neptune instances.  For additional configuration see [AWS LangChain API documentation](https://python.langchain.com/api_reference/aws/graphs/langchain_aws.graphs.neptune_graph.NeptuneAnalyticsGraph.html).  
-
-```python
-from mem0 import Memory
-
-config = {
-    "graph_store": {
-        "provider": "neptune",
-        "config": {
-            "graph_identifier": "GRAPH_ID",
-        },
-    },
-}
-
-m = Memory.from_config(config_dict=config)
-```
-
-For more details, see the [Neptune Analytics example notebook](examples/graph-db-demo/neptune-analytics-example.ipynb).
-
-
 For detailed integration steps, see the [Quickstart](https://docs.mem0.ai/quickstart) and [API Reference](https://docs.mem0.ai/api-reference).
 
 ## 🔗 Integrations & Demos
