@@ -372,42 +372,6 @@ class NeptuneBase(ABC):
         """
         pass
 
-    def search(self, query, filters, limit=100):
-        """
-        Search for memories and related graph data.
-
-        Args:
-            query (str): Query to search for.
-            filters (dict): A dictionary containing filters to be applied during the search.
-            limit (int): The maximum number of nodes and relationships to retrieve. Defaults to 100.
-
-        Returns:
-            dict: A dictionary containing:
-                - "contexts": List of search results from the base data store.
-                - "entities": List of related graph data based on the query.
-        """
-        entity_type_map = self._retrieve_nodes_from_data(query, filters)
-        search_output = self._search_graph_db(node_list=list(entity_type_map.keys()), filters=filters)
-
-        if not search_output:
-            return []
-
-        search_outputs_sequence = [
-            [item["source"], item["relationship"], item["destination"]] for item in search_output
-        ]
-        bm25 = BM25Okapi(search_outputs_sequence)
-
-        tokenized_query = query.split(" ")
-        reranked_results = bm25.get_top_n(tokenized_query, search_outputs_sequence, n=5)
-
-        search_results = []
-        for item in reranked_results:
-            search_results.append({"source": item[0], "relationship": item[1], "destination": item[2]})
-
-        logger.info(f"Returned {len(search_results)} search results")
-
-        return search_results
-
     def _search_graph_db(self, node_list, filters, limit=100):
         """
         Search similar nodes among and their respective incoming and outgoing relations.
@@ -434,7 +398,7 @@ class NeptuneBase(ABC):
         """
         Reset the graph by clearing all nodes and relationships.
         """
-        logger.warning(f"Clearing graph...")
+        logger.warning("Clearing graph...")
         cypher_query, params = self._reset_cypher()
         self.graph.query(cypher_query)
 

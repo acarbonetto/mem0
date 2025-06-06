@@ -40,11 +40,13 @@ class MemgraphConfig(BaseModel):
             raise ValueError("Please provide 'url', 'username' and 'password'.")
         return values
 
+
 class NeptuneConfig(BaseModel):
     endpoint: Optional[str] = Field(
         # TODO: also support neptune-db:
         # None, description="Endpoint to connect to a Neptune DB or Analytics server as either neptune-db://<endpoint> or neptune-graph://<graphid>"
-        None, description="Endpoint to connect to a Neptune Analytics Server as neptune-graph://<graphid>"
+        None,
+        description="Endpoint to connect to a Neptune Analytics Server as neptune-graph://<graphid>",
     )
 
     @model_validator(mode="before")
@@ -68,6 +70,7 @@ class NeptuneConfig(BaseModel):
                 "You must provide an endpoint to create a NeptuneServer as either neptune-db://<endpoint> or neptune-graph://<graphid>"
             )
 
+
 class GraphStoreConfig(BaseModel):
     provider: str = Field(
         description="Provider of the data store (e.g., 'neo4j', 'memgraph', 'neptune')",
@@ -76,9 +79,7 @@ class GraphStoreConfig(BaseModel):
     config: Union[Neo4jConfig, MemgraphConfig, NeptuneConfig] = Field(
         description="Configuration for the specific data store", default=None
     )
-    llm: Optional[LlmConfig] = Field(
-        description="LLM configuration for querying the graph store", default=None
-    )
+    llm: Optional[LlmConfig] = Field(description="LLM configuration for querying the graph store", default=None)
     custom_prompt: Optional[str] = Field(
         description="Custom prompt to fetch entities from the given text", default=None
     )
