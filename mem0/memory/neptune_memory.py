@@ -1,6 +1,5 @@
 import logging
-
-from mem0.memory.utils import format_entities
+from .neptune_base import NeptuneBase
 
 try:
     from langchain_aws import NeptuneAnalyticsGraph
@@ -9,39 +8,22 @@ except ImportError:
         "langchain_aws is not installed. Please install it using 'make install_all'."
     )
 
-try:
-    from rank_bm25 import BM25Okapi
-except ImportError:
-    raise ImportError(
-        "rank_bm25 is not installed. Please install it using pip install rank-bm25"
-    )
-
-from mem0.graphs.tools import (
-    DELETE_MEMORY_STRUCT_TOOL_GRAPH,
-    DELETE_MEMORY_TOOL_GRAPH,
-    EXTRACT_ENTITIES_STRUCT_TOOL,
-    EXTRACT_ENTITIES_TOOL,
-    RELATIONS_STRUCT_TOOL,
-    RELATIONS_TOOL,
-)
-from mem0.graphs.utils import EXTRACT_RELATIONS_PROMPT, get_delete_messages
-from mem0.utils.factory import EmbedderFactory, LlmFactory
-
 logger = logging.getLogger(__name__)
 
-
-class MemoryGraph:
+class MemoryGraph(NeptuneBase):
     def __init__(self, config):
         self.config = config
 
-        self.graph = NeptuneAnalyticsGraph(
-            self.config.graph_store.config.graph_identifier,
-        )
-        self.embedding_model = EmbedderFactory.create(
-            self.config.embedder.provider,
-            self.config.embedder.config,
-            {"enable_embeddings": True},
-        )
+        # TODO: support NeptuneGraph(endpoint, port, use_https) if 'neptune-db://' is given in the config
+        endpoint = self.config.graph_store.config.endpoint
+        if endpoint.startswith("neptune-graph://"):
+            graph_identifier = endpoint.replace("neptune-graph://", "")
+            self.graph = NeptuneAnalyticsGraph(graph_identifier)
+
+        if not self.graph:
+            raise ValueError("Unable to create a Neptune client: missing 'endpoint' in config")
+
+        self.embedding_model = NeptuneBase._create_embedding_model(self.config)
 
         self.llm_provider = "openai_structured"
         if self.config.llm.provider:
@@ -49,166 +31,22 @@ class MemoryGraph:
         if self.config.graph_store.llm:
             self.llm_provider = self.config.graph_store.llm.provider
 
-        self.llm = LlmFactory.create(self.llm_provider, self.config.llm.config)
+        self.llm = NeptuneBase._create_lmm(self.config, self.llm_provider)
         self.user_id = None
         self.threshold = 0.7
 
-    def add(self, data, filters):
+    def _delete_entities_cypher(self, source, destination, relationship, user_id):
         """
-        Adds data to the graph.
+        Returns the OpenCypher query and parameters for deleting entities in the graph DB
 
-        Args:
-            data (str): The data to add to the graph.
-            filters (dict): A dictionary containing filters to be applied during the addition.
+        :param source: source node
+        :param destination: destination node
+        :param relationship: relationship label
+        :param user_id: user_id to use
+        :return: str, dict
         """
-        entity_type_map = self._retrieve_nodes_from_data(data, filters)
-        to_be_added = self._establish_nodes_relations_from_data(
-            data, filters, entity_type_map
-        )
-        # self._search_graph_db_print_similarity(node_list=list(entity_type_map.keys()), filters=filters)
-        search_output = self._search_graph_db(
-            node_list=list(entity_type_map.keys()), filters=filters
-        )
-        to_be_deleted = self._get_delete_entities_from_search_output(
-            search_output, data, filters
-        )
 
-        deleted_entities = (
-            self._delete_entities(to_be_deleted, filters["user_id"])
-        )
-        added_entities = self._add_entities(
-            to_be_added, filters["user_id"], entity_type_map
-        )
-
-        return {"deleted_entities": deleted_entities, "added_entities": added_entities}
-
-    def _retrieve_nodes_from_data(self, data, filters):
-        """Extracts all the entities mentioned in the query."""
-        _tools = [EXTRACT_ENTITIES_TOOL]
-        if self.llm_provider in ["azure_openai_structured", "openai_structured"]:
-            _tools = [EXTRACT_ENTITIES_STRUCT_TOOL]
-        search_results = self.llm.generate_response(
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"You are a smart assistant who understands entities and their types in a given text. If user message contains self reference such as 'I', 'me', 'my' etc. then use {filters['user_id']} as the source entity. Extract all the entities from the text. ***DO NOT*** answer the question itself if the given text is a question.",
-                },
-                {"role": "user", "content": data},
-            ],
-            tools=_tools,
-        )
-
-        entity_type_map = {}
-
-        try:
-            for tool_call in search_results["tool_calls"]:
-                if tool_call["name"] != "extract_entities":
-                    continue
-                for item in tool_call["arguments"]["entities"]:
-                    entity_type_map[item["entity"]] = item["entity_type"]
-        except Exception as e:
-            logger.exception(
-                f"Error in search tool: {e}, llm_provider={self.llm_provider}, search_results={search_results}"
-            )
-
-        entity_type_map = {
-            k.lower().replace(" ", "_"): v.lower().replace(" ", "_")
-            for k, v in entity_type_map.items()
-        }
-        return entity_type_map
-
-    def _establish_nodes_relations_from_data(self, data, filters, entity_type_map):
-        """Eshtablish relations among the extracted nodes."""
-        if self.config.graph_store.custom_prompt:
-            messages = [
-                {
-                    "role": "system",
-                    "content": EXTRACT_RELATIONS_PROMPT.replace(
-                        "USER_ID", filters["user_id"]
-                    ).replace(
-                        "CUSTOM_PROMPT", f"4. {self.config.graph_store.custom_prompt}"
-                    ),
-                },
-                {"role": "user", "content": data},
-            ]
-        else:
-            messages = [
-                {
-                    "role": "system",
-                    "content": EXTRACT_RELATIONS_PROMPT.replace(
-                        "USER_ID", filters["user_id"]
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": f"List of entities: {list(entity_type_map.keys())}. \n\nText: {data}",
-                },
-            ]
-
-        _tools = [RELATIONS_TOOL]
-        if self.llm_provider in ["azure_openai_structured", "openai_structured"]:
-            _tools = [RELATIONS_STRUCT_TOOL]
-
-        extracted_entities = self.llm.generate_response(
-            messages=messages,
-            tools=_tools,
-        )
-
-        entities = []
-        if extracted_entities["tool_calls"]:
-            entities = extracted_entities["tool_calls"][0]["arguments"]["entities"]
-
-        entities = self._remove_spaces_from_entities(entities)
-        logger.debug(f"Extracted entities: {entities}")
-        return entities
-
-    def _remove_spaces_from_entities(self, entity_list):
-        for item in entity_list:
-            item["source"] = item["source"].lower().replace(" ", "_")
-            item["relationship"] = item["relationship"].lower().replace(" ", "_")
-            item["destination"] = item["destination"].lower().replace(" ", "_")
-        return entity_list
-
-    def _get_delete_entities_from_search_output(self, search_output, data, filters):
-        """Get the entities to be deleted from the search output."""
-        search_output_string = format_entities(search_output)
-        system_prompt, user_prompt = get_delete_messages(
-            search_output_string, data, filters["user_id"]
-        )
-
-        _tools = [DELETE_MEMORY_TOOL_GRAPH]
-        if self.llm_provider in ["azure_openai_structured", "openai_structured"]:
-            _tools = [
-                DELETE_MEMORY_STRUCT_TOOL_GRAPH,
-            ]
-
-        memory_updates = self.llm.generate_response(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            tools=_tools,
-        )
-
-        to_be_deleted = []
-        for item in memory_updates["tool_calls"]:
-            if item["name"] == "delete_graph_memory":
-                to_be_deleted.append(item["arguments"])
-        # in case if it is not in the correct format
-        to_be_deleted = self._remove_spaces_from_entities(to_be_deleted)
-        logger.debug(f"Deleted relationships: {to_be_deleted}")
-        return to_be_deleted
-
-    def _delete_entities(self, to_be_deleted, user_id):
-        """Delete the entities from the graph."""
-        results = []
-        for item in to_be_deleted:
-            source = item["source"]
-            destination = item["destination"]
-            relationship = item["relationship"]
-
-            # Delete the specific relationship between nodes
-            cypher = f"""
+        cypher = f"""
             MATCH (n {{name: $source_name, user_id: $user_id}})
             -[r:{relationship}]->
             (m {{name: $dest_name, user_id: $user_id}})
@@ -218,44 +56,45 @@ class MemoryGraph:
                 m.name AS target,
                 type(r) AS relationship
             """
-            params = {
-                "source_name": source,
-                "dest_name": destination,
-                "user_id": user_id,
-            }
-            logger.debug(f"_delete_entities\n  query={cypher}")
-            result = self.graph.query(cypher, params=params)
-            results.append(result)
-        return results
+        params = {
+            "source_name": source,
+            "dest_name": destination,
+            "user_id": user_id,
+        }
+        logger.debug(f"_delete_entities\n  query={cypher}")
+        return cypher, params
 
-    def _add_entities(self, to_be_added, user_id, entity_type_map):
-        """Add the new entities to the graph. Merge the nodes if they already exist."""
-        results = []
-        for item in to_be_added:
-            # entities
-            source = item["source"]
-            destination = item["destination"]
-            relationship = item["relationship"]
+    def _add_entities_cypher(
+            self,
+            source_node_list,
+            source,
+            source_embedding,
+            source_type,
+            destination_node_list,
+            destination,
+            dest_embedding,
+            destination_type,
+            relationship,
+            user_id):
+        """
+        Returns the OpenCypher query and parameters for adding entities in the graph DB
 
-            # types
-            source_type = entity_type_map.get(source, "__User__")
-            destination_type = entity_type_map.get(destination, "__User__")
+        :param source_node_list: list of source nodes
+        :param source: source node name
+        :param source_embedding: source node embedding
+        :param source_type: source node label
+        :param destination_node_list: list of dest nodes
+        :param destination: destination name
+        :param dest_embedding: destination embedding
+        :param destination_type: destination node label
+        :param relationship: relationship label
+        :param user_id: user id to use
+        :return: str, dict
+        """
 
-            # embeddings
-            source_embedding = self.embedding_model.embed(source)
-            dest_embedding = self.embedding_model.embed(destination)
-
-            # search for the nodes with the closest embeddings
-            source_node_search_result = self._search_source_node(
-                source_embedding, user_id, threshold=0.9
-            )
-            destination_node_search_result = self._search_destination_node(
-                dest_embedding, user_id, threshold=0.9
-            )
-
-            # TODO: Create a cypher query and common params for all the cases
-            if not destination_node_search_result and source_node_search_result:
-                cypher = f"""
+        # TODO: Create a cypher query and common params for all the cases
+        if not destination_node_list and source_node_list:
+            cypher = f"""
                     MATCH (source)
                     WHERE id(source) = $source_id
                     SET source.mentions = coalesce(source.mentions, 0) + 1
@@ -278,14 +117,14 @@ class MemoryGraph:
                     RETURN source.name AS source, type(r) AS relationship, destination.name AS target
                     """
 
-                params = {
-                    "source_id": source_node_search_result[0]["id(source_candidate)"],
-                    "destination_name": destination,
-                    "destination_embedding": dest_embedding,
-                    "user_id": user_id,
-                }
-            elif destination_node_search_result and not source_node_search_result:
-                cypher = f"""
+            params = {
+                "source_id": source_node_list[0]["id(source_candidate)"],
+                "destination_name": destination,
+                "destination_embedding": dest_embedding,
+                "user_id": user_id,
+            }
+        elif destination_node_list and not source_node_list:
+            cypher = f"""
                     MATCH (destination)
                     WHERE id(destination) = $destination_id
                     SET destination.mentions = coalesce(destination.mentions, 0) + 1
@@ -308,16 +147,16 @@ class MemoryGraph:
                     RETURN source.name AS source, type(r) AS relationship, destination.name AS target
                     """
 
-                params = {
-                    "destination_id": destination_node_search_result[0][
-                        "id(destination_candidate)"
-                    ],
-                    "source_name": source,
-                    "source_embedding": source_embedding,
-                    "user_id": user_id,
-                }
-            elif source_node_search_result and destination_node_search_result:
-                cypher = f"""
+            params = {
+                "destination_id": destination_node_list[0][
+                    "id(destination_candidate)"
+                ],
+                "source_name": source,
+                "source_embedding": source_embedding,
+                "user_id": user_id,
+            }
+        elif source_node_list and destination_node_list:
+            cypher = f"""
                     MATCH (source)
                     WHERE id(source) = $source_id
                     SET source.mentions = coalesce(source.mentions, 0) + 1
@@ -335,15 +174,15 @@ class MemoryGraph:
                     
                     RETURN source.name AS source, type(r) AS relationship, destination.name AS target
                     """
-                params = {
-                    "source_id": source_node_search_result[0]["id(source_candidate)"],
-                    "destination_id": destination_node_search_result[0][
-                        "id(destination_candidate)"
-                    ],
-                    "user_id": user_id,
-                }
-            else:
-                cypher = f"""
+            params = {
+                "source_id": source_node_list[0]["id(source_candidate)"],
+                "destination_id": destination_node_list[0][
+                    "id(destination_candidate)"
+                ],
+                "user_id": user_id,
+            }
+        else:
+            cypher = f"""
                     MERGE (n:{source_type} {{name: $source_name, user_id: $user_id}})
                     ON CREATE SET n.created = timestamp(),
                                   n.mentions = 1
@@ -363,59 +202,25 @@ class MemoryGraph:
                     ON MATCH SET rel.mentions = coalesce(rel.mentions, 0) + 1
                     RETURN n.name AS source, type(rel) AS relationship, m.name AS target
                     """
-                params = {
-                    "source_name": source,
-                    "dest_name": destination,
-                    "source_embedding": source_embedding,
-                    "dest_embedding": dest_embedding,
-                    "user_id": user_id,
-                }
-            logger.debug(f"_add_entities:\n  destination_node_search_result={destination_node_search_result}\n  source_node_search_result={source_node_search_result}\n  query={cypher}")
-            result = self.graph.query(cypher, params=params)
-            results.append(result)
-        return results
+            params = {
+                "source_name": source,
+                "dest_name": destination,
+                "source_embedding": source_embedding,
+                "dest_embedding": dest_embedding,
+                "user_id": user_id,
+            }
+        logger.debug(f"_add_entities:\n  destination_node_search_result={destination_node_list}\n  source_node_search_result={source_node_list}\n  query={cypher}")
+        return cypher, params
 
-    def search(self, query, filters, limit=100):
+    def _search_source_node_cypher(self, source_embedding, user_id, threshold):
         """
-        Search for memories and related graph data.
+        Returns the OpenCypher query and parameters to search for source nodes
 
-        Args:
-            query (str): Query to search for.
-            filters (dict): A dictionary containing filters to be applied during the search.
-            limit (int): The maximum number of nodes and relationships to retrieve. Defaults to 100.
-
-        Returns:
-            dict: A dictionary containing:
-                - "contexts": List of search results from the base data store.
-                - "entities": List of related graph data based on the query.
+        :param source_embedding: source vector
+        :param user_id: user_id to use
+        :param threshold: the threshold for similarity
+        :return: str, dict
         """
-        entity_type_map = self._retrieve_nodes_from_data(query, filters)
-        search_output = self._search_graph_db(
-            node_list=list(entity_type_map.keys()), filters=filters
-        )
-
-        if not search_output:
-            return []
-
-        search_outputs_sequence = [
-            [item["source"], item["relationship"], item["destination"]]
-            for item in search_output
-        ]
-        bm25 = BM25Okapi(search_outputs_sequence)
-
-        tokenized_query = query.split(" ")
-        reranked_results = bm25.get_top_n(tokenized_query, search_outputs_sequence, n=5)
-        print(f"reranked_results={reranked_results}")
-
-        search_results = []
-        for item in reranked_results:
-            search_results.append(
-                {"source": item[0], "relationship": item[1], "destination": item[2]}
-            )
-
-        return search_results
-
-    def _search_source_node(self, source_embedding, user_id, threshold=0.9):
         cypher = """
             MATCH (source_candidate)
             WHERE source_candidate.embedding IS NOT NULL 
@@ -427,15 +232,14 @@ class MemoryGraph:
                 source_candidate,
                 {metric:"CosineSimilarity"}
             ) YIELD distance
-            
-            WITH source_candidate, (round((2 * distance - 1) * 1000) / 1000) AS source_similarity
-            WHERE source_similarity >= $threshold
+            WITH source_candidate, distance AS cosine_similarity
+            WHERE cosine_similarity >= $threshold
 
-            WITH source_candidate, source_similarity
-            ORDER BY source_similarity DESC
+            WITH source_candidate, cosine_similarity
+            ORDER BY cosine_similarity DESC
             LIMIT 1
 
-            RETURN id(source_candidate)
+            RETURN id(source_candidate), cosine_similarity
             """
 
         params = {
@@ -443,35 +247,38 @@ class MemoryGraph:
             "user_id": user_id,
             "threshold": threshold,
         }
-
         logger.debug(f"_search_source_node\n  query={cypher}")
-        result = self.graph.query(cypher, params=params)
-        logger.debug(f"_search_source_node result\n  result={result}")
-        return result
+        return cypher, params
 
-    def _search_destination_node(self, destination_embedding, user_id, threshold=0.9):
+    def _search_destination_node_cypher(self, destination_embedding, user_id, threshold):
+        """
+        Returns the OpenCypher query and parameters to search for destination nodes
+
+        :param source_embedding: source vector
+        :param user_id: user_id to use
+        :param threshold: the threshold for similarity
+        :return: str, dict
+        """
         cypher = """
-            MATCH (destination_candidate)
-            WHERE destination_candidate.embedding IS NOT NULL 
-            AND destination_candidate.user_id = $user_id
-
-            WITH destination_candidate, destination_candidate.embedding AS embedding, $destination_embedding as v_embedding
-            CALL neptune.algo.vectors.distanceByEmbedding(
-                embedding, 
-                destination_candidate,
-                {metric:"CosineSimilarity"}
-            ) YIELD distance
-
-            WITH destination_candidate, (round((2 * distance - 1) * 1000) / 1000) AS destination_similarity
-
-            WHERE destination_similarity >= $threshold
-
-            WITH destination_candidate, destination_similarity
-            ORDER BY destination_similarity DESC
-            LIMIT 1
-
-            RETURN id(destination_candidate)
-            """
+                MATCH (destination_candidate)
+                WHERE destination_candidate.embedding IS NOT NULL 
+                AND destination_candidate.user_id = $user_id
+    
+                WITH destination_candidate, destination_candidate.embedding AS embedding, $destination_embedding as v_embedding
+                CALL neptune.algo.vectors.distanceByEmbedding(
+                    embedding, 
+                    destination_candidate,
+                    {metric:"CosineSimilarity"}
+                ) YIELD distance
+                WITH destination_candidate, distance AS cosine_similarity
+                WHERE cosine_similarity >= $threshold
+    
+                WITH destination_candidate, cosine_similarity
+                ORDER BY cosine_similarity DESC
+                LIMIT 1
+    
+                RETURN id(destination_candidate), cosine_similarity
+                """
         params = {
             "destination_embedding": destination_embedding,
             "user_id": user_id,
@@ -479,11 +286,15 @@ class MemoryGraph:
         }
 
         logger.debug(f"_search_destination_node\n  query={cypher}")
-        result = self.graph.query(cypher, params=params)
-        logger.debug(f"_search_destination_node result\n  result={result}")
-        return result
+        return cypher, params
 
-    def delete_all(self, filters):
+    def _delete_all_cypher(self, filters):
+        """
+        Returns the OpenCypher query and parameters to delete all edges/nodes in the memory store
+
+        :param filters: search filters
+        :return: str, dict
+        """
         cypher = """
         MATCH (n {user_id: $user_id})
         DETACH DELETE n
@@ -491,93 +302,36 @@ class MemoryGraph:
         params = {"user_id": filters["user_id"]}
 
         logger.debug(f"delete_all query={cypher}")
-        self.graph.query(cypher, params=params)
+        return cypher, params
 
-    def get_all(self, filters, limit=100):
+    def _get_all_cypher(self, filters, limit):
         """
-        Retrieves all nodes and relationships from the graph database based on optional filtering criteria.
+        Returns the OpenCypher query and parameters to get all edges/nodes in the memory store
 
-        Args:
-            filters (dict): A dictionary containing filters to be applied during the retrieval.
-            limit (int): The maximum number of nodes and relationships to retrieve. Defaults to 100.
-        Returns:
-            list: A list of dictionaries, each containing:
-                - 'contexts': The base data store response for each memory.
-                - 'entities': A list of strings representing the nodes and relationships
+        :param filters: search filters
+        :param limit: return limit
+        :return: str, dict
         """
 
-        # return all nodes and relationships
-        query = """
+        cypher = """
         MATCH (n {user_id: $user_id})-[r]->(m {user_id: $user_id})
         RETURN n.name AS source, type(r) AS relationship, m.name AS target
         LIMIT $limit
         """
         params = {"user_id": filters["user_id"], "limit": limit}
-        results = self.graph.query(query, params=params)
+        return cypher, params
 
-        final_results = []
-        for result in results:
-            final_results.append(
-                {
-                    "source": result["source"],
-                    "relationship": result["relationship"],
-                    "target": result["target"],
-                }
-            )
-
-        logger.debug(f"Retrieved {len(final_results)} relationships")
-
-        return final_results
-
-    def search(self, query, filters, limit=100):
+    def _search_graph_db_cypher(self, n_embedding, filters, limit):
         """
-        Search for memories and related graph data.
+        Returns the OpenCypher query and parameters to search for similar nodes in the memory store
 
-        Args:
-            query (str): Query to search for.
-            filters (dict): A dictionary containing filters to be applied during the search.
-            limit (int): The maximum number of nodes and relationships to retrieve. Defaults to 100.
-
-        Returns:
-            dict: A dictionary containing:
-                - "contexts": List of search results from the base data store.
-                - "entities": List of related graph data based on the query.
+        :param n_embedding: node vector
+        :param filters: search filters
+        :param limit: return limit
+        :return: str, dict
         """
-        entity_type_map = self._retrieve_nodes_from_data(query, filters)
-        search_output = self._search_graph_db(
-            node_list=list(entity_type_map.keys()), filters=filters
-        )
 
-        if not search_output:
-            return []
-
-        search_outputs_sequence = [
-            [item["source"], item["relationship"], item["destination"]]
-            for item in search_output
-        ]
-        bm25 = BM25Okapi(search_outputs_sequence)
-
-        tokenized_query = query.split(" ")
-        reranked_results = bm25.get_top_n(tokenized_query, search_outputs_sequence, n=5)
-
-        search_results = []
-        for item in reranked_results:
-            search_results.append(
-                {"source": item[0], "relationship": item[1], "destination": item[2]}
-            )
-
-        logger.info(f"Returned {len(search_results)} search results")
-
-        return search_results
-
-    def _search_graph_db(self, node_list, filters, limit=100):
-        """Search similar nodes among and their respective incoming and outgoing relations."""
-        result_relations = []
-
-        for node in node_list:
-            n_embedding = self.embedding_model.embed(node)
-
-            cypher_query = """
+        cypher_query = """
             MATCH (n)
             WHERE n.user_id = $user_id
             WITH n, $n_embedding as n_embedding
@@ -602,73 +356,24 @@ class MemoryGraph:
             ORDER BY similarity DESC
             LIMIT $limit
             """
-            params = {
-                "n_embedding": n_embedding,
-                "threshold": self.threshold,
-                "user_id": filters["user_id"],
-                "limit": limit,
-            }
+        params = {
+            "n_embedding": n_embedding,
+            "threshold": self.threshold,
+            "user_id": filters["user_id"],
+            "limit": limit,
+        }
+        logger.debug(f"_search_graph_db\n  query={cypher_query}")
 
-            logger.debug(f"_search_graph_db\n  query={cypher_query}")
-            ans = self.graph.query(cypher_query, params=params)
-            logger.debug(f"_search_graph_db result\n  ans={ans}")
-            result_relations.extend(ans)
+        return cypher_query, params
 
-        return result_relations
+    def _reset_cypher(self):
+        """
+        Returns the OpenCypher query and parameters to reset the memory store
 
-    def _search_graph_db_print_similarity(self, node_list, filters, limit=100):
-        """Search similar nodes among and their respective incoming and outgoing relations."""
-        result_relations = []
+        :return: str, dict
+        """
 
-        logger.debug(f"_search_graph_db_print_similarity {node_list}")
-
-        for node in node_list:
-            n_embedding = self.embedding_model.embed(node)
-
-            cypher_query = """
-            MATCH (n)
-            WHERE n.user_id = $user_id
-            WITH n, $n_embedding as n_embedding
-            CALL neptune.algo.vectors.distanceByEmbedding(
-                n_embedding,
-                n,
-                {metric:"CosineSimilarity"}
-            ) YIELD distance
-            WITH n, distance, (round(2 * distance - 1)) AS rounded_distance, (round((2 * distance - 1) * 1000) / 1000) AS similarity
-            CALL {
-                WITH n
-                MATCH (n)-[r]->(m) 
-                RETURN n.name AS node, id(n) AS node_id
-                UNION ALL
-                WITH n
-                MATCH (o)-[r]->(n) 
-                RETURN n.name AS node, id(n) AS node_id
-            }
-            WITH distinct node, node_id, distance, rounded_distance, similarity
-            RETURN node, node_id, distance, rounded_distance, similarity
-            ORDER BY distance DESC
-            LIMIT $limit
-            """
-            params = {
-                "n_embedding": n_embedding,
-                "threshold": self.threshold,
-                "user_id": filters["user_id"],
-                "limit": limit,
-            }
-
-            ans = self.graph.query(cypher_query, params=params)
-            for other_node in ans:
-                distance = other_node["distance"]
-                rounded_distance = other_node["rounded_distance"]
-                similarity = other_node["similarity"]
-                other_node_name = other_node["node"]
-                logger.debug(f"_search_graph_db_print_similarity={node} x {other_node_name}: {distance}, {rounded_distance}, {similarity}")
-
-    # TODO: reset is not defined in base.py
-    def reset(self):
-        """Reset the graph by clearing all nodes and relationships."""
-        logger.warning(f"Clearing graph...")
         cypher_query = """
         MATCH (n) DETACH DELETE n
         """
-        self.graph.query(cypher_query)
+        return cypher_query, {}

@@ -41,18 +41,32 @@ class MemgraphConfig(BaseModel):
         return values
 
 class NeptuneConfig(BaseModel):
-    graph_identifier: Optional[str] = Field(
-        None, description="Neptune graph identifier"
+    endpoint: Optional[str] = Field(
+        # TODO: also support neptune-db:
+        # None, description="Endpoint to connect to a Neptune DB or Analytics server as either neptune-db://<endpoint> or neptune-graph://<graphid>"
+        None, description="Endpoint to connect to a Neptune Analytics Server as neptune-graph://<graphid>"
     )
 
     @model_validator(mode="before")
     def check_host_port_or_path(cls, values):
-        graph_identifier = values.get("graph_identifier")
-        if not graph_identifier:
-            raise ValueError("Please provide 'graph_identifier'.")
-        if not graph_identifier.startswith("g-"):
-            raise ValueError("Provide a valid 'graph_identifier'.")
-        return values
+        endpoint = values.get("endpoint")
+        if not endpoint:
+            # TODO: also support neptune-db:
+            # raise ValueError("Please provide 'endpoint' with the format as either neptune-db://<endpoint> or neptune-graph://<graphid>.")
+            raise ValueError("Please provide 'endpoint' with the format as 'neptune-graph://<graphid>'.")
+        if endpoint.startswith("neptune-db://"):
+            raise ValueError("neptune-db server is not yet supported")
+        elif endpoint.startswith("neptune-graph://"):
+            # This is a Neptune Analytics Graph
+            graph_identifier = endpoint.replace("neptune-graph://", "")
+            if not graph_identifier.startswith("g-"):
+                raise ValueError("Provide a valid 'graph_identifier'.")
+            values["graph_identifier"] = graph_identifier
+            return values
+        else:
+            raise ValueError(
+                "You must provide an endpoint to create a NeptuneServer as either neptune-db://<endpoint> or neptune-graph://<graphid>"
+            )
 
 class GraphStoreConfig(BaseModel):
     provider: str = Field(
