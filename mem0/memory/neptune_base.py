@@ -336,7 +336,7 @@ class NeptuneBase(ABC):
 
     def get_all(self, filters, limit=100):
         """
-        Retrieves all nodes and relationships from the graph database based on optional filtering criteria.
+        Retrieves all nodes and relationships from the graph database based on filtering criteria.
 
         Args:
             filters (dict): A dictionary containing filters to be applied during the retrieval.
