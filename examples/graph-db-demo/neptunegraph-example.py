@@ -11,10 +11,11 @@ logger.setLevel(logging.DEBUG)
 # logging.getLogger('botocore').setLevel(logging.WARNING)
 
 logging.basicConfig(
-    format='%(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    stream=sys.stdout  # Explicitly set output to stdout
+    format="%(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    stream=sys.stdout,  # Explicitly set output to stdout
 )
+
 
 def get_all_relationships():
     neptune_graph = NeptuneAnalyticsGraph(graph_identifier)
@@ -24,9 +25,7 @@ def get_all_relationships():
             RETURN n.name AS source, type(r) AS relationship, m.name AS target
             LIMIT $limit
             """
-    edge_results = neptune_graph.query(
-        query, params={"user_id": "alice", "limit": 100}
-    )
+    edge_results = neptune_graph.query(query, params={"user_id": "alice", "limit": 100})
 
     print("----RELATIONSHIPS----")
     for e in edge_results:
@@ -40,9 +39,7 @@ def get_all_relationships():
     LIMIT $limit
     """
 
-    node_results = neptune_graph.query(
-        query, params={"user_id": "alice", "limit": 100}
-    )
+    node_results = neptune_graph.query(query, params={"user_id": "alice", "limit": 100})
     # print(f"node_results={node_results}")
 
     print("----NODES----")
@@ -60,10 +57,7 @@ opensearch_password = os.environ.get("OS_PASSWORD")
 config = {
     "embedder": {
         "provider": "openai",
-        "config": {
-            "model": "text-embedding-3-large",
-            "embedding_dims": 1536
-        },
+        "config": {"model": "text-embedding-3-large", "embedding_dims": 1536},
     },
     "graph_store": {
         "provider": "neptune",
@@ -101,12 +95,8 @@ messages = [
 ]
 
 # Store inferred memories (default behavior)
-logger.debug(
-    "--------USER: \"I'm planning to watch a movie tonight. Any recommendations?\""
-)
-result = m.add(
-    messages, user_id="alice", metadata={"category": "movie_recommendations"}
-)
+logger.debug('--------USER: "I\'m planning to watch a movie tonight. Any recommendations?"')
+result = m.add(messages, user_id="alice", metadata={"category": "movie_recommendations"})
 
 get_all_relationships()
 
@@ -117,9 +107,7 @@ messages = [
     },
 ]
 
-logger.debug(
-    "--------ASSISTANT: \"How about a thriller movies? They can be quite engaging.\""
-)
+logger.debug('--------ASSISTANT: "How about a thriller movies? They can be quite engaging."')
 # Store raw messages without inference
 result = m.add(messages, user_id="alice", metadata={"category": "movie_recommendations"}, infer=False)
 
@@ -132,9 +120,7 @@ messages = [
     },
 ]
 
-logger.debug(
-    "--------USER: \"I'm not a big fan of thriller movies but I love sci-fi movies.\""
-)
+logger.debug('--------USER: "I\'m not a big fan of thriller movies but I love sci-fi movies."')
 # Store raw messages without inference
 result = m.add(messages, user_id="alice", metadata={"category": "movie_recommendations"}, infer=False)
 
@@ -148,7 +134,7 @@ messages = [
 ]
 
 logger.debug(
-    "--------ASSISTANT: \"Got it! I'll avoid thriller recommendations and suggest sci-fi movies in the future.\""
+    '--------ASSISTANT: "Got it! I\'ll avoid thriller recommendations and suggest sci-fi movies in the future."'
 )
 # Store raw messages without inference
 result = m.add(messages, user_id="alice", metadata={"category": "movie_recommendations"}, infer=False)

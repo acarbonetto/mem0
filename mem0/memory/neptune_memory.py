@@ -4,11 +4,10 @@ from .neptune_base import NeptuneBase
 try:
     from langchain_aws import NeptuneAnalyticsGraph
 except ImportError:
-    raise ImportError(
-        "langchain_aws is not installed. Please install it using 'make install_all'."
-    )
+    raise ImportError("langchain_aws is not installed. Please install it using 'make install_all'.")
 
 logger = logging.getLogger(__name__)
+
 
 class MemoryGraph(NeptuneBase):
     def __init__(self, config):
@@ -65,17 +64,18 @@ class MemoryGraph(NeptuneBase):
         return cypher, params
 
     def _add_entities_cypher(
-            self,
-            source_node_list,
-            source,
-            source_embedding,
-            source_type,
-            destination_node_list,
-            destination,
-            dest_embedding,
-            destination_type,
-            relationship,
-            user_id):
+        self,
+        source_node_list,
+        source,
+        source_embedding,
+        source_type,
+        destination_node_list,
+        destination,
+        dest_embedding,
+        destination_type,
+        relationship,
+        user_id,
+    ):
         """
         Returns the OpenCypher query and parameters for adding entities in the graph DB
 
@@ -148,9 +148,7 @@ class MemoryGraph(NeptuneBase):
                     """
 
             params = {
-                "destination_id": destination_node_list[0][
-                    "id(destination_candidate)"
-                ],
+                "destination_id": destination_node_list[0]["id(destination_candidate)"],
                 "source_name": source,
                 "source_embedding": source_embedding,
                 "user_id": user_id,
@@ -176,9 +174,7 @@ class MemoryGraph(NeptuneBase):
                     """
             params = {
                 "source_id": source_node_list[0]["id(source_candidate)"],
-                "destination_id": destination_node_list[0][
-                    "id(destination_candidate)"
-                ],
+                "destination_id": destination_node_list[0]["id(destination_candidate)"],
                 "user_id": user_id,
             }
         else:
@@ -209,7 +205,9 @@ class MemoryGraph(NeptuneBase):
                 "dest_embedding": dest_embedding,
                 "user_id": user_id,
             }
-        logger.debug(f"_add_entities:\n  destination_node_search_result={destination_node_list}\n  source_node_search_result={source_node_list}\n  query={cypher}")
+        logger.debug(
+            f"_add_entities:\n  destination_node_search_result={destination_node_list}\n  source_node_search_result={source_node_list}\n  query={cypher}"
+        )
         return cypher, params
 
     def _search_source_node_cypher(self, source_embedding, user_id, threshold):
