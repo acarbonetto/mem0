@@ -68,7 +68,7 @@ config = {
     "graph_store": {
         "provider": "neptune",
         "config": {
-            "graph_identifier": graph_identifier,
+            "endpoint": f"neptune-graph://{graph_identifier}",
         },
     },
     "vector_store": {
