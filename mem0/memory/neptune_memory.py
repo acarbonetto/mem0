@@ -106,7 +106,7 @@ class MemoryGraph(NeptuneBase):
                     ON MATCH SET
                         destination.mentions = coalesce(destination.mentions, 0) + 1
                     WITH source, destination
-                    CALL db.create.setNodeVectorProperty(destination, 'embedding', $destination_embedding)
+                    CALL neptune.algo.vectors.upsert(destination, $destination_embedding)
                     WITH source, destination
                     MERGE (source)-[r:{relationship}]->(destination)
                     ON CREATE SET 
@@ -136,7 +136,7 @@ class MemoryGraph(NeptuneBase):
                     ON MATCH SET
                         source.mentions = coalesce(source.mentions, 0) + 1
                     WITH source, destination
-                    CALL db.create.setNodeVectorProperty(source, 'embedding', $source_embedding)
+                    CALL neptune.algo.vectors.upsert(source, $source_embedding)
                     WITH source, destination
                     MERGE (source)-[r:{relationship}]->(destination)
                     ON CREATE SET 
@@ -168,8 +168,6 @@ class MemoryGraph(NeptuneBase):
                         r.updated_at = timestamp(),
                         r.mentions = 1
                     ON MATCH SET r.mentions = coalesce(r.mentions, 0) + 1
-                    
-                    
                     RETURN source.name AS source, type(r) AS relationship, destination.name AS target
                     """
             params = {

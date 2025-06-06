@@ -9,9 +9,6 @@ from langchain_aws import NeptuneAnalyticsGraph
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-# logging.getLogger('boto3').setLevel(logging.WARNING)
-# logging.getLogger('botocore').setLevel(logging.WARNING)
-
 logging.basicConfig(
     format="%(levelname)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
@@ -143,56 +140,34 @@ result = m.add(messages, user_id="alice", metadata={"category": "movie_recommend
 
 get_all_relationships()
 
-# Get all memories
-# logger.debug(
-#     "---------------------------------------------------all_memories-------------------------------------------------"
-# )
-# all_memories = m.get_all(user_id="alice")
-# logger.debug(f"all_memories={all_memories}")
+logger.debug(
+    "---------------------------------------------------all_memories-------------------------------------------------"
+)
+all_memories = m.get_all(user_id="alice")
+logger.debug(f"all_memories={all_memories}")
 
 
-# logger.debug(
-#     "---------------------------------------------------specific_memory-------------------------------------------------"
-# )
-# first_id = all_memories["results"][0]["id"]
-# specific_memory = m.get(first_id)
-# logger.debug(f"specific_memory={specific_memory}")
+logger.debug(
+    "---------------------------------------------------specific_memory-------------------------------------------------"
+)
+first_id = all_memories["results"][0]["id"]
+specific_memory = m.get(first_id)
+logger.debug(f"specific_memory={specific_memory}")
 
 
-# logger.debug(
-#     "---------------------------------------------------related_memories-------------------------------------------------"
-# )
-# related_memories = m.search(query="What do you know about me?", user_id="alice")
-# logger.debug(f"related_memories={related_memories}")
-
-# logger.debug(
-#     "---------------------------------------------------update-------------------------------------------------"
-# )
-# result = m.update(
-#     memory_id=first_id,
-#     data="I love India, it is my favorite country.",
-# )
-# logger.debug(f"m.update result={result}")
-#
-# logger.debug(
-#     "---------------------------------------------------history-------------------------------------------------"
-# )
-# history = m.history(memory_id=first_id)
-# logger.debug(f"m.history={history}")
-
-# Delete a memory by id
-# print(
-#     "---------------------------------------------------delete one-------------------------------------------------"
-# )
-# m.delete(memory_id=first_id)
+logger.debug(
+    "---------------------------------------------------related_memories-------------------------------------------------"
+)
+related_memories = m.search(query="What do you know about me?", user_id="alice")
+logger.debug(f"related_memories={related_memories}")
 
 # Delete all memories for a user
-# logger.debug(
-#     "---------------------------------------------------delete all by user-------------------------------------------------"
-# )
-# m.delete_all(user_id="alice")
-#
-# logger.debug(
-#     "---------------------------------------------------reset-------------------------------------------------"
-# )
-# m.reset()  # Reset all memories
+logger.debug(
+    "---------------------------------------------------delete all by user-------------------------------------------------"
+)
+m.delete_all(user_id="alice")
+
+logger.debug(
+    "---------------------------------------------------reset-------------------------------------------------"
+)
+m.reset()  # Reset all memories
