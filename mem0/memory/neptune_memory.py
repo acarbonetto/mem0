@@ -13,7 +13,6 @@ class MemoryGraph(NeptuneBase):
     def __init__(self, config):
         self.config = config
 
-        # TODO: support NeptuneGraph(endpoint, port, use_https) if 'neptune-db://' is given in the config
         endpoint = self.config.graph_store.config.endpoint
         if endpoint.startswith("neptune-graph://"):
             graph_identifier = endpoint.replace("neptune-graph://", "")
