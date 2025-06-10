@@ -408,7 +408,4 @@ class NeptuneBase(ABC):
             skipSnapshot=True,
         )
         waiter = self.graph.client.get_waiter("graph_available")
-        waiter.wait(
-            graphIdentifier=graph_id, WaiterConfig={"Delay": 10, "MaxAttempts": 60}
-        )
-
+        waiter.wait(graphIdentifier=graph_id, WaiterConfig={"Delay": 10, "MaxAttempts": 60})

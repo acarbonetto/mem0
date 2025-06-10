@@ -42,12 +42,14 @@ class MemgraphConfig(BaseModel):
 
 
 class NeptuneConfig(BaseModel):
-    endpoint: Optional[str] = Field(
-        # TODO: also support neptune-db:
-        # None, description="Endpoint to connect to a Neptune DB or Analytics server as either neptune-db://<endpoint> or neptune-graph://<graphid>"
-        None,
-        description="Endpoint to connect to a Neptune Analytics Server as neptune-graph://<graphid>",
-    ),
+    endpoint: Optional[str] = (
+        Field(
+            # TODO: also support neptune-db:
+            # None, description="Endpoint to connect to a Neptune DB or Analytics server as either neptune-db://<endpoint> or neptune-graph://<graphid>"
+            None,
+            description="Endpoint to connect to a Neptune Analytics Server as neptune-graph://<graphid>",
+        ),
+    )
     base_label: Optional[bool] = Field(None, description="Whether to use base node label __Entity__ for all entities")
 
     @model_validator(mode="before")
