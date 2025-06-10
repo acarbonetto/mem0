@@ -40,7 +40,7 @@ class NeptuneBase(ABC):
         )
 
     @staticmethod
-    def _create_lmm(config, llm_provider):
+    def _create_llm(config, llm_provider):
         """
         :return: the llm model used for memory store
         """
