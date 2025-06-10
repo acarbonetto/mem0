@@ -244,7 +244,7 @@ class MemoryGraph(NeptuneBase):
             ORDER BY cosine_similarity DESC
             LIMIT 1
 
-            RETURN id(source_candidate), source_candidate, cosine_similarity
+            RETURN id(source_candidate), cosine_similarity
             """
 
         params = {
@@ -281,7 +281,7 @@ class MemoryGraph(NeptuneBase):
                 ORDER BY cosine_similarity DESC
                 LIMIT 1
     
-                RETURN id(destination_candidate), destination_candidate, cosine_similarity
+                RETURN id(destination_candidate), cosine_similarity
                 """
         params = {
             "destination_embedding": destination_embedding,
