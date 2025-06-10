@@ -241,11 +241,14 @@ Mem0 now supports Amazon Neptune Analytics as a graph store provider. This integ
 1. Create a Neptune Analytics instance in your AWS account following the [AWS documentation](https://docs.aws.amazon.com/neptune-analytics/latest/userguide/get-started.html).
 2. Configure your AWS credentials with access to your Neptune Analytics resources using [Configuration and credentials precedence](https://docs.aws.amazon.com/cli/v1/userguide/cli-chap-configure.html#configure-precedence).
 
+***Note***: The Neptune Analytics instance must be created using the same vector dimension as the vectors the embedding model creates. See: https://docs.aws.amazon.com/neptune-analytics/latest/userguide/vector-index.html
+
 For example, set the following environment variables:
 <CodeGroup>
 ```bash
 export AWS_ACCESS_KEY_ID=your-access-key
 export AWS_SECRET_ACCESS_KEY=your-secret-key
+export AWS_DEFAULT_REGION=your-region
 ```
 </CodeGroup>
 
@@ -257,6 +260,7 @@ The Neptune memory store uses AWS LangChain Python API to connect to Neptune ins
 ```python Python
 from mem0 import Memory
 
+# This example must connect to a neptune-graph instance with 1536 vector dimensions specified.
 config = {
     "embedder": {
         "provider": "openai",

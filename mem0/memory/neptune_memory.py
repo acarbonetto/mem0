@@ -19,6 +19,8 @@ class MemoryGraph(NeptuneBase):
             graph_identifier = endpoint.replace("neptune-graph://", "")
             self.graph = NeptuneAnalyticsGraph(graph_identifier)
 
+        self.node_label = ":`__Entity__`" if self.config.graph_store.config.base_label else ""
+
         if not self.graph:
             raise ValueError("Unable to create a Neptune client: missing 'endpoint' in config")
 
@@ -46,9 +48,9 @@ class MemoryGraph(NeptuneBase):
         """
 
         cypher = f"""
-            MATCH (n {{name: $source_name, user_id: $user_id}})
+            MATCH (n {self.node_label} {{name: $source_name, user_id: $user_id}})
             -[r:{relationship}]->
-            (m {{name: $dest_name, user_id: $user_id}})
+            (m {self.node_label} {{name: $dest_name, user_id: $user_id}})
             DELETE r
             RETURN 
                 n.name AS source,
@@ -92,6 +94,11 @@ class MemoryGraph(NeptuneBase):
         :return: str, dict
         """
 
+        source_label = self.node_label if self.node_label else f":`{source_type}`"
+        source_extra_set = f", source:`{source_type}`" if self.node_label else ""
+        destination_label = self.node_label if self.node_label else f":`{destination_type}`"
+        destination_extra_set = f", destination:`{destination_type}`" if self.node_label else ""
+
         # TODO: Create a cypher query and common params for all the cases
         if not destination_node_list and source_node_list:
             cypher = f"""
@@ -99,14 +106,15 @@ class MemoryGraph(NeptuneBase):
                     WHERE id(source) = $source_id
                     SET source.mentions = coalesce(source.mentions, 0) + 1
                     WITH source
-                    MERGE (destination:{destination_type} {{name: $destination_name, user_id: $user_id}})
+                    MERGE (destination {destination_label} {{name: $destination_name, user_id: $user_id}})
                     ON CREATE SET
                         destination.created = timestamp(),
                         destination.mentions = 1
+                        {destination_extra_set}
                     ON MATCH SET
                         destination.mentions = coalesce(destination.mentions, 0) + 1
-                    WITH source, destination
-                    CALL neptune.algo.vectors.upsert(destination, $destination_embedding)
+                    WITH source, destination, $dest_embedding as dest_embedding
+                    CALL neptune.algo.vectors.upsert(destination, dest_embedding)
                     WITH source, destination
                     MERGE (source)-[r:{relationship}]->(destination)
                     ON CREATE SET 
@@ -120,7 +128,7 @@ class MemoryGraph(NeptuneBase):
             params = {
                 "source_id": source_node_list[0]["id(source_candidate)"],
                 "destination_name": destination,
-                "destination_embedding": dest_embedding,
+                "dest_embedding": dest_embedding,
                 "user_id": user_id,
             }
         elif destination_node_list and not source_node_list:
@@ -129,14 +137,15 @@ class MemoryGraph(NeptuneBase):
                     WHERE id(destination) = $destination_id
                     SET destination.mentions = coalesce(destination.mentions, 0) + 1
                     WITH destination
-                    MERGE (source:{source_type} {{name: $source_name, user_id: $user_id}})
+                    MERGE (source {source_label} {{name: $source_name, user_id: $user_id}})
                     ON CREATE SET
                         source.created = timestamp(),
                         source.mentions = 1
+                        {source_extra_set}
                     ON MATCH SET
                         source.mentions = coalesce(source.mentions, 0) + 1
-                    WITH source, destination
-                    CALL neptune.algo.vectors.upsert(source, $source_embedding)
+                    WITH source, destination, $source_embedding as source_embedding
+                    CALL neptune.algo.vectors.upsert(source, source_embedding)
                     WITH source, destination
                     MERGE (source)-[r:{relationship}]->(destination)
                     ON CREATE SET 
@@ -177,16 +186,18 @@ class MemoryGraph(NeptuneBase):
             }
         else:
             cypher = f"""
-                    MERGE (n:{source_type} {{name: $source_name, user_id: $user_id}})
+                    MERGE (n {source_label} {{name: $source_name, user_id: $user_id}})
                     ON CREATE SET n.created = timestamp(),
                                   n.mentions = 1
+                                  {source_extra_set}
                     ON MATCH SET n.mentions = coalesce(n.mentions, 0) + 1
                     WITH n, $source_embedding as source_embedding
                     CALL neptune.algo.vectors.upsert(n, source_embedding)
                     WITH n
-                    MERGE (m:{destination_type} {{name: $dest_name, user_id: $user_id}})
+                    MERGE (m {destination_label} {{name: $dest_name, user_id: $user_id}})
                     ON CREATE SET m.created = timestamp(),
                                   m.mentions = 1
+                                  {destination_extra_set}
                     ON MATCH SET m.mentions = coalesce(m.mentions, 0) + 1
                     WITH n, m, $dest_embedding as dest_embedding
                     CALL neptune.algo.vectors.upsert(m, dest_embedding)
@@ -217,16 +228,15 @@ class MemoryGraph(NeptuneBase):
         :param threshold: the threshold for similarity
         :return: str, dict
         """
-        cypher = """
-            MATCH (source_candidate)
-            WHERE source_candidate.embedding IS NOT NULL 
-            AND source_candidate.user_id = $user_id
+        cypher = f"""
+            MATCH (source_candidate {self.node_label})
+            WHERE source_candidate.user_id = $user_id 
 
-            WITH source_candidate, source_candidate.embedding AS embedding, $source_embedding as v_embedding
+            WITH source_candidate, $source_embedding as v_embedding
             CALL neptune.algo.vectors.distanceByEmbedding(
-                embedding, 
+                v_embedding,
                 source_candidate,
-                {metric:"CosineSimilarity"}
+                {{metric:"CosineSimilarity"}}
             ) YIELD distance
             WITH source_candidate, distance AS cosine_similarity
             WHERE cosine_similarity >= $threshold
@@ -235,7 +245,7 @@ class MemoryGraph(NeptuneBase):
             ORDER BY cosine_similarity DESC
             LIMIT 1
 
-            RETURN id(source_candidate), cosine_similarity
+            RETURN id(source_candidate), source_candidate, cosine_similarity
             """
 
         params = {
@@ -255,25 +265,24 @@ class MemoryGraph(NeptuneBase):
         :param threshold: the threshold for similarity
         :return: str, dict
         """
-        cypher = """
-                MATCH (destination_candidate)
-                WHERE destination_candidate.embedding IS NOT NULL 
-                AND destination_candidate.user_id = $user_id
-    
-                WITH destination_candidate, destination_candidate.embedding AS embedding, $destination_embedding as v_embedding
+        cypher = f"""
+                MATCH (destination_candidate {self.node_label})
+                WHERE destination_candidate.user_id = $user_id
+                
+                WITH destination_candidate, $destination_embedding as v_embedding
                 CALL neptune.algo.vectors.distanceByEmbedding(
-                    embedding, 
-                    destination_candidate,
-                    {metric:"CosineSimilarity"}
+                    v_embedding,
+                    destination_candidate, 
+                    {{metric:"CosineSimilarity"}}
                 ) YIELD distance
                 WITH destination_candidate, distance AS cosine_similarity
                 WHERE cosine_similarity >= $threshold
-    
+
                 WITH destination_candidate, cosine_similarity
                 ORDER BY cosine_similarity DESC
                 LIMIT 1
     
-                RETURN id(destination_candidate), cosine_similarity
+                RETURN id(destination_candidate), destination_candidate, cosine_similarity
                 """
         params = {
             "destination_embedding": destination_embedding,
@@ -291,8 +300,8 @@ class MemoryGraph(NeptuneBase):
         :param filters: search filters
         :return: str, dict
         """
-        cypher = """
-        MATCH (n {user_id: $user_id})
+        cypher = f"""
+        MATCH (n {self.node_label} {{user_id: $user_id}})
         DETACH DELETE n
         """
         params = {"user_id": filters["user_id"]}
@@ -309,8 +318,8 @@ class MemoryGraph(NeptuneBase):
         :return: str, dict
         """
 
-        cypher = """
-        MATCH (n {user_id: $user_id})-[r]->(m {user_id: $user_id})
+        cypher = f"""
+        MATCH (n {self.node_label} {{user_id: $user_id}})-[r]->(m {self.node_label} {{user_id: $user_id}})
         RETURN n.name AS source, type(r) AS relationship, m.name AS target
         LIMIT $limit
         """
@@ -327,18 +336,18 @@ class MemoryGraph(NeptuneBase):
         :return: str, dict
         """
 
-        cypher_query = """
-            MATCH (n)
+        cypher_query = f"""
+            MATCH (n {self.node_label})
             WHERE n.user_id = $user_id
             WITH n, $n_embedding as n_embedding
             CALL neptune.algo.vectors.distanceByEmbedding(
                 n_embedding,
                 n,
-                {metric:"CosineSimilarity"}
+                {{metric:"CosineSimilarity"}}
             ) YIELD distance
             WITH n, distance as similarity
             WHERE similarity >= $threshold
-            CALL {
+            CALL {{
                 WITH n
                 MATCH (n)-[r]->(m) 
                 RETURN n.name AS source, id(n) AS source_id, type(r) AS relationship, id(r) AS relation_id, m.name AS destination, id(m) AS destination_id
@@ -346,7 +355,7 @@ class MemoryGraph(NeptuneBase):
                 WITH n
                 MATCH (m)-[r]->(n) 
                 RETURN m.name AS source, id(m) AS source_id, type(r) AS relationship, id(r) AS relation_id, n.name AS destination, id(n) AS destination_id
-            }
+            }}
             WITH distinct source, source_id, relationship, relation_id, destination, destination_id, similarity
             RETURN source, source_id, relationship, relation_id, destination, destination_id, similarity
             ORDER BY similarity DESC
@@ -361,15 +370,3 @@ class MemoryGraph(NeptuneBase):
         logger.debug(f"_search_graph_db\n  query={cypher_query}")
 
         return cypher_query, params
-
-    def _reset_cypher(self):
-        """
-        Returns the OpenCypher query and parameters to reset the memory store
-
-        :return: str, dict
-        """
-
-        cypher_query = """
-        MATCH (n) DETACH DELETE n
-        """
-        return cypher_query, {}

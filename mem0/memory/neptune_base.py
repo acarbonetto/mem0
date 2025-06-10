@@ -324,11 +324,11 @@ class NeptuneBase(ABC):
         pass
 
     def delete_all(self, filters):
-        cypher, params = self._delete_all_cypher(self, filters)
+        cypher, params = self._delete_all_cypher(filters)
         self.graph.query(cypher, params=params)
 
     @abstractmethod
-    def _delete_all_cypher(self, destination_embedding, user_id, threshold):
+    def _delete_all_cypher(self, filters):
         """
         Returns the OpenCypher query and parameters to delete all edges/nodes in the memory store
         """
@@ -397,14 +397,18 @@ class NeptuneBase(ABC):
     def reset(self):
         """
         Reset the graph by clearing all nodes and relationships.
-        """
-        logger.warning("Clearing graph...")
-        cypher_query, params = self._reset_cypher()
-        self.graph.query(cypher_query)
 
-    @abstractmethod
-    def _reset_cypher(self):
+        link: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/neptune-graph/client/reset_graph.html
         """
-        Returns the OpenCypher query and parameters to reset the memory store
-        """
-        pass
+
+        logger.warning("Clearing graph...")
+        graph_id = self.graph.graph_identifier
+        self.graph.client.reset_graph(
+            graphIdentifier=graph_id,
+            skipSnapshot=True,
+        )
+        waiter = self.graph.client.get_waiter("graph_available")
+        waiter.wait(
+            graphIdentifier=graph_id, WaiterConfig={"Delay": 10, "MaxAttempts": 60}
+        )
+

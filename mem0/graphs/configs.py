@@ -47,14 +47,13 @@ class NeptuneConfig(BaseModel):
         # None, description="Endpoint to connect to a Neptune DB or Analytics server as either neptune-db://<endpoint> or neptune-graph://<graphid>"
         None,
         description="Endpoint to connect to a Neptune Analytics Server as neptune-graph://<graphid>",
-    )
+    ),
+    base_label: Optional[bool] = Field(None, description="Whether to use base node label __Entity__ for all entities")
 
     @model_validator(mode="before")
     def check_host_port_or_path(cls, values):
         endpoint = values.get("endpoint")
         if not endpoint:
-            # TODO: also support neptune-db:
-            # raise ValueError("Please provide 'endpoint' with the format as either neptune-db://<endpoint> or neptune-graph://<graphid>.")
             raise ValueError("Please provide 'endpoint' with the format as 'neptune-graph://<graphid>'.")
         if endpoint.startswith("neptune-db://"):
             raise ValueError("neptune-db server is not yet supported")
