@@ -31,7 +31,7 @@ class MemoryGraph(NeptuneBase):
         if self.config.graph_store.llm:
             self.llm_provider = self.config.graph_store.llm.provider
 
-        self.llm = NeptuneBase._create_lmm(self.config, self.llm_provider)
+        self.llm = NeptuneBase._create_llm(self.config, self.llm_provider)
         self.user_id = None
         self.threshold = 0.7
 
