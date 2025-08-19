@@ -199,7 +199,8 @@ class GraphStoreFactory:
 
     provider_to_class = {
         "memgraph": "mem0.memory.memgraph_memory.MemoryGraph",
-        "neptune": "mem0.graphs.neptune.main.MemoryGraph",
+        "neptune": "mem0.graphs.neptune.neptunegraph.MemoryGraph",
+        "neptunedb": "mem0.graphs.neptune.neptunedb.MemoryGraph",
         "default": "mem0.memory.graph_memory.MemoryGraph",
     }
 
