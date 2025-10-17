@@ -60,13 +60,21 @@ class MemoryADD:
                 "max_tokens": 2000,
             }
         },
+        # "vector_store": {
+        #     "provider": "faiss",
+        #     "config": {
+        #         "collection_name": "test",
+        #         "path": "/tmp/faiss_memories"
+        #     }
+        # }
+
         "vector_store": {
-            "provider": "faiss",
+            "provider": "neptune",
             "config": {
                 "collection_name": "test",
-                "path": "/tmp/faiss_memories"
-            }
-        }
+                "endpoint": f"neptune-graph://{os.environ.get('GRAPH_ID')}",
+            },
+        },
     }
 
 
@@ -114,7 +122,6 @@ class MemoryADD:
     def add_memories_for_speaker(self, speaker, messages, timestamp, desc):
         for i in tqdm(range(0, len(messages), self.batch_size), desc=desc):
             batch_messages = messages[i : i + self.batch_size]
-
             self.add_memory(speaker, batch_messages, metadata={"timestamp": timestamp})
 
     def process_conversation(self, item, idx):
