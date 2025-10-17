@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 from tqdm import tqdm
 
-from mem0 import MemoryClient
+from mem0 import MemoryClient, Memory
 
 load_dotenv()
 
@@ -43,14 +43,42 @@ Generate personal memories that follow these guidelines:
 
 
 class MemoryADD:
-    def __init__(self, data_path=None, batch_size=2, is_graph=False):
-        self.mem0_client = MemoryClient(
-            api_key=os.getenv("MEM0_API_KEY"),
-            org_id=os.getenv("MEM0_ORGANIZATION_ID"),
-            project_id=os.getenv("MEM0_PROJECT_ID"),
-        )
+    config = {
+        "embedder": {
+            "provider": "aws_bedrock",
+            "config": {
+                "model": "amazon.titan-embed-text-v2:0",
+                "embedding_dims": 1024
+            },
+        },
 
-        self.mem0_client.update_project(custom_instructions=custom_instructions)
+        "llm": {
+            "provider": "aws_bedrock",
+            "config": {
+                "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+                "temperature": 0.1,
+                "max_tokens": 2000,
+            }
+        },
+        "vector_store": {
+            "provider": "faiss",
+            "config": {
+                "collection_name": "test",
+                "path": "/tmp/faiss_memories"
+            }
+        }
+    }
+
+
+    def __init__(self, data_path=None, batch_size=2, is_graph=False):
+        # self.mem0_client = MemoryClient(
+        #     api_key=os.getenv("MEM0_API_KEY"),
+        #     org_id=os.getenv("MEM0_ORGANIZATION_ID"),
+        #     project_id=os.getenv("MEM0_PROJECT_ID"),
+        # )
+        self.mem0_client = Memory.from_config(config_dict=self.config)
+        # TO-DO: Need an alternative way to set custom_instruction,
+        # self.mem0_client.update_project(custom_instructions=custom_instructions)
         self.batch_size = batch_size
         self.data_path = data_path
         self.data = None
@@ -66,8 +94,12 @@ class MemoryADD:
     def add_memory(self, user_id, message, metadata, retries=3):
         for attempt in range(retries):
             try:
+                # Parameters `version` and `eneable_graph` are not supported.
+                # _ = self.mem0_client.add(
+                #     message, user_id=user_id, version="v2", metadata=metadata, enable_graph=self.is_graph
+                # )
                 _ = self.mem0_client.add(
-                    message, user_id=user_id, version="v2", metadata=metadata, enable_graph=self.is_graph
+                    message, user_id=user_id, metadata=metadata
                 )
                 return
             except Exception as e:
