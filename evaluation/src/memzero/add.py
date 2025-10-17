@@ -101,6 +101,8 @@ class MemoryADD:
                 _ = self.mem0_client.add(
                     message, user_id=user_id, metadata=metadata
                 )
+                print(message)
+                time.sleep(10)
                 return
             except Exception as e:
                 if attempt < retries - 1:
@@ -112,6 +114,7 @@ class MemoryADD:
     def add_memories_for_speaker(self, speaker, messages, timestamp, desc):
         for i in tqdm(range(0, len(messages), self.batch_size), desc=desc):
             batch_messages = messages[i : i + self.batch_size]
+
             self.add_memory(speaker, batch_messages, metadata={"timestamp": timestamp})
 
     def process_conversation(self, item, idx):
