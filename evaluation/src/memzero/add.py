@@ -69,8 +69,18 @@ class MemoryADD:
         },
     }
 
+    graph_config = config | {
+        "graph_store": {
+            "provider": "neptune",
+            "config": {
+                "endpoint": f"neptune-graph://{os.environ.get('GRAPH_ID')}",
+            },
+        }
+    }
+
 
     def __init__(self, data_path=None, batch_size=2, is_graph=False):
+        # update parameters to run vs platform vs local
         # self.mem0_client = MemoryClient(
         #     api_key=os.getenv("MEM0_API_KEY"),
         #     org_id=os.getenv("MEM0_ORGANIZATION_ID"),
