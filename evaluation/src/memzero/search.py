@@ -6,10 +6,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 from dotenv import load_dotenv
 from jinja2 import Template
-# from openai import OpenAI
 from .prompts import ANSWER_PROMPT, ANSWER_PROMPT_GRAPH
 from tqdm import tqdm
 from mem0 import Memory
+from mem0.llms.aws_bedrock import AWSBedrockLLM
+from mem0.embeddings.aws_bedrock import AWSBedrockEmbedding
 
 load_dotenv()
 
@@ -23,7 +24,6 @@ class MemorySearch:
                 "embedding_dims": 1024
             },
         },
-
         "llm": {
             "provider": "aws_bedrock",
             "config": {
@@ -49,8 +49,7 @@ class MemorySearch:
         # )
         self.mem0_client = Memory.from_config(config_dict=self.config)
         self.top_k = top_k
-        # self.openai_client = OpenAI()
-        self.bedrock_client =
+        self.bedrock_client = AWSBedrockLLM(self.config["llm"]["config"])
         self.results = defaultdict(list)
         self.output_path = output_path
         self.filter_memories = filter_memories
@@ -92,7 +91,6 @@ class MemorySearch:
 
         end_time = time.time()
         if not self.is_graph:
-            print(f"memories:{memories}")
             semantic_memories = [
                 {
                     "memory": memory["memory"],
@@ -140,15 +138,14 @@ class MemorySearch:
         )
 
         t1 = time.time()
-        response = self.openai_client.chat.completions.create(
-            model=os.getenv("MODEL"),
-            messages=[{"role": "system", "content": answer_prompt}],
+        response = self.bedrock_client.generate_response(
+            messages=[{"role": "user", "content": answer_prompt}],
             temperature=0.0
         )
         t2 = time.time()
         response_time = t2 - t1
         return (
-            response.choices[0].message.content,
+            response,
             speaker_1_memories,
             speaker_2_memories,
             speaker_1_memory_time,
