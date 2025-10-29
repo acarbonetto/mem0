@@ -6,24 +6,51 @@ from concurrent.futures import ThreadPoolExecutor
 
 from dotenv import load_dotenv
 from jinja2 import Template
-from openai import OpenAI
-from prompts import ANSWER_PROMPT, ANSWER_PROMPT_GRAPH
+# from openai import OpenAI
+from .prompts import ANSWER_PROMPT, ANSWER_PROMPT_GRAPH
 from tqdm import tqdm
-
-from mem0 import MemoryClient
+from mem0 import Memory
 
 load_dotenv()
 
-
 class MemorySearch:
+
+    config = {
+        "embedder": {
+            "provider": "aws_bedrock",
+            "config": {
+                "model": "amazon.titan-embed-text-v2:0",
+                "embedding_dims": 1024
+            },
+        },
+
+        "llm": {
+            "provider": "aws_bedrock",
+            "config": {
+                "model": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                "temperature": 0.1,
+                "max_tokens": 2000,
+            }
+        },
+        "vector_store": {
+            "provider": "neptune",
+            "config": {
+                "collection_name": "test",
+                "endpoint": f"neptune-graph://{os.environ.get('GRAPH_ID')}",
+            },
+        },
+    }
+
     def __init__(self, output_path="results.json", top_k=10, filter_memories=False, is_graph=False):
-        self.mem0_client = MemoryClient(
-            api_key=os.getenv("MEM0_API_KEY"),
-            org_id=os.getenv("MEM0_ORGANIZATION_ID"),
-            project_id=os.getenv("MEM0_PROJECT_ID"),
-        )
+        # self.mem0_client = MemoryClient(
+        #     api_key=os.getenv("MEM0_API_KEY"),
+        #     org_id=os.getenv("MEM0_ORGANIZATION_ID"),
+        #     project_id=os.getenv("MEM0_PROJECT_ID"),
+        # )
+        self.mem0_client = Memory.from_config(config_dict=self.config)
         self.top_k = top_k
-        self.openai_client = OpenAI()
+        # self.openai_client = OpenAI()
+        self.bedrock_client =
         self.results = defaultdict(list)
         self.output_path = output_path
         self.filter_memories = filter_memories
@@ -44,14 +71,16 @@ class MemorySearch:
                     memories = self.mem0_client.search(
                         query,
                         user_id=user_id,
-                        top_k=self.top_k,
-                        filter_memories=self.filter_memories,
+                        # top_k=self.top_k,
+                        limit=self.top_k,
+                        # filter_memories=self.filter_memories,
+                        filters=self.filter_memories,
                         enable_graph=True,
                         output_format="v1.1",
                     )
                 else:
                     memories = self.mem0_client.search(
-                        query, user_id=user_id, top_k=self.top_k, filter_memories=self.filter_memories
+                        query, user_id=user_id, limit=self.top_k, filters=self.filter_memories
                     )
                 break
             except Exception as e:
@@ -63,13 +92,14 @@ class MemorySearch:
 
         end_time = time.time()
         if not self.is_graph:
+            print(f"memories:{memories}")
             semantic_memories = [
                 {
                     "memory": memory["memory"],
                     "timestamp": memory["metadata"]["timestamp"],
                     "score": round(memory["score"], 2),
                 }
-                for memory in memories
+                for memory in memories["results"]
             ]
             graph_memories = None
         else:
@@ -111,7 +141,9 @@ class MemorySearch:
 
         t1 = time.time()
         response = self.openai_client.chat.completions.create(
-            model=os.getenv("MODEL"), messages=[{"role": "system", "content": answer_prompt}], temperature=0.0
+            model=os.getenv("MODEL"),
+            messages=[{"role": "system", "content": answer_prompt}],
+            temperature=0.0
         )
         t2 = time.time()
         response_time = t2 - t1
@@ -169,6 +201,7 @@ class MemorySearch:
         return result
 
     def process_data_file(self, file_path):
+        print(f"process_data_file: {file_path}")
         with open(file_path, "r") as f:
             data = json.load(f)
 

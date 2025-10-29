@@ -55,19 +55,11 @@ class MemoryADD:
         "llm": {
             "provider": "aws_bedrock",
             "config": {
-                "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+                "model": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
                 "temperature": 0.1,
                 "max_tokens": 2000,
             }
         },
-        # "vector_store": {
-        #     "provider": "faiss",
-        #     "config": {
-        #         "collection_name": "test",
-        #         "path": "/tmp/faiss_memories"
-        #     }
-        # }
-
         "vector_store": {
             "provider": "neptune",
             "config": {
