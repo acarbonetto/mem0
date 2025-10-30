@@ -24,6 +24,7 @@ class MemorySearch:
                 "embedding_dims": 1024
             },
         },
+
         "llm": {
             "provider": "aws_bedrock",
             "config": {
@@ -41,13 +42,25 @@ class MemorySearch:
         },
     }
 
+    graph_config = config | {
+        "graph_store": {
+            "provider": "neptune",
+            "config": {
+                "endpoint": f"neptune-graph://{os.environ.get('GRAPH_ID')}",
+            },
+        },
+    }
+
     def __init__(self, output_path="results.json", top_k=10, filter_memories=False, is_graph=False):
         # self.mem0_client = MemoryClient(
         #     api_key=os.getenv("MEM0_API_KEY"),
         #     org_id=os.getenv("MEM0_ORGANIZATION_ID"),
         #     project_id=os.getenv("MEM0_PROJECT_ID"),
         # )
-        self.mem0_client = Memory.from_config(config_dict=self.config)
+        if is_graph:
+            self.mem0_client = Memory.from_config(config_dict=self.graph_config)
+        else:
+            self.mem0_client = Memory.from_config(config_dict=self.config)
         self.top_k = top_k
         self.bedrock_client = AWSBedrockLLM(self.config["llm"]["config"])
         self.results = defaultdict(list)
@@ -74,8 +87,8 @@ class MemorySearch:
                         limit=self.top_k,
                         # filter_memories=self.filter_memories,
                         filters=self.filter_memories,
-                        enable_graph=True,
-                        output_format="v1.1",
+                        # enable_graph=True,
+                        # output_format="v1.1",
                     )
                 else:
                     memories = self.mem0_client.search(
@@ -110,7 +123,7 @@ class MemorySearch:
                 for memory in memories["results"]
             ]
             graph_memories = [
-                {"source": relation["source"], "relationship": relation["relationship"], "target": relation["target"]}
+                {"source": relation["source"], "relationship": relation["relationship"], "target": relation["destination"]}
                 for relation in memories["relations"]
             ]
         return semantic_memories, graph_memories, end_time - start_time
@@ -198,7 +211,6 @@ class MemorySearch:
         return result
 
     def process_data_file(self, file_path):
-        print(f"process_data_file: {file_path}")
         with open(file_path, "r") as f:
             data = json.load(f)
 

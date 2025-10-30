@@ -4,10 +4,12 @@ import json
 import threading
 from collections import defaultdict
 
-from metrics.llm_judge import evaluate_llm_judge
+from dotenv import load_dotenv
+load_dotenv()
+
+from metrics.bedrock_llm_judge import evaluate_llm_judge
 from metrics.utils import calculate_bleu_scores, calculate_metrics
 from tqdm import tqdm
-
 
 def process_item(item_data):
     k, v = item_data

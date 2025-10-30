@@ -29,3 +29,6 @@ run-zep-search:
 
 run-openai:
 	python run_experiments.py --technique_type openai --output_folder results/
+
+run-generate-scores:
+	python generate_scores.py

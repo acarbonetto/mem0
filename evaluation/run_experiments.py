@@ -10,7 +10,7 @@ from src.utils import METHODS, TECHNIQUES
 from src.zep.add import ZepAdd
 from src.zep.search import ZepSearch
 
-DATASET_PATH = "dataset/locomo10_1.json"
+DATASET_PATH = os.environ.get("DATASET_PATH")
 
 class Experiment:
     def __init__(self, technique_type, chunk_size):

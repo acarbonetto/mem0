@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 from tqdm import tqdm
 
-from mem0 import MemoryClient, Memory
+from mem0 import Memory
 
 load_dotenv()
 
@@ -75,9 +75,8 @@ class MemoryADD:
             "config": {
                 "endpoint": f"neptune-graph://{os.environ.get('GRAPH_ID')}",
             },
-        }
+        },
     }
-
 
     def __init__(self, data_path=None, batch_size=2, is_graph=False):
         # update parameters to run vs platform vs local
@@ -86,7 +85,10 @@ class MemoryADD:
         #     org_id=os.getenv("MEM0_ORGANIZATION_ID"),
         #     project_id=os.getenv("MEM0_PROJECT_ID"),
         # )
-        self.mem0_client = Memory.from_config(config_dict=self.config)
+        if (is_graph):
+            self.mem0_client = Memory.from_config(config_dict=self.graph_config)
+        else :
+            self.mem0_client = Memory.from_config(config_dict=self.config)
         # TO-DO: Need an alternative way to set custom_instruction,
         # self.mem0_client.update_project(custom_instructions=custom_instructions)
         self.batch_size = batch_size
@@ -111,7 +113,6 @@ class MemoryADD:
                 _ = self.mem0_client.add(
                     message, user_id=user_id, metadata=metadata
                 )
-                print(message)
                 time.sleep(10)
                 return
             except Exception as e:
